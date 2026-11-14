@@ -266,7 +266,20 @@
       "dates": "Starts 2026-05-05"
     }
   },
-  "medpace": {},
+  "medpace": {
+    "medpace:healthy-adults-ages-18-60-3350-2": {
+      "pay": "$3,350",
+      "dates": ""
+    },
+    "medpace:healthy-adults-ages-21-60-11750": {
+      "pay": "$11,750",
+      "dates": ""
+    },
+    "medpace:have-you-previously-taken-or-are-currently-taking-a-glp-1-medication": {
+      "pay": "",
+      "dates": ""
+    }
+  },
   "fortrea": {
     "fortrea:/778|781236 1": {
       "pay": "$22,524 to $23,132",
@@ -365,6 +378,36 @@
     "altasciences:89493": {
       "pay": "$16,800",
       "dates": "20 to 23 Dec, 11 Jan to 3 Feb"
+    }
+  },
+  "parexel": {
+    "parexel:289935": {
+      "pay": "$100",
+      "dates": ""
+    },
+    "parexel:287970": {
+      "pay": "$24,400",
+      "dates": ""
+    },
+    "parexel:296518": {
+      "pay": "$24,250",
+      "dates": ""
+    },
+    "parexel:292912 (Part C 4)": {
+      "pay": "$17,500",
+      "dates": ""
+    },
+    "parexel:298362": {
+      "pay": "$18,200",
+      "dates": ""
+    },
+    "parexel:296245": {
+      "pay": "$18,200",
+      "dates": ""
+    },
+    "parexel:292296.BAL": {
+      "pay": "$10,500",
+      "dates": ""
     }
   }
 }
