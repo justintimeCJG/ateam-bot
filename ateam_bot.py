@@ -266,7 +266,16 @@ def scrape_trialmed():
 # SOURCE: Medpace - study cards
 # ---------------------------------------------------------------------------
 def scrape_medpace():
-    soup = get_soup("https://www.medpace.com/study-participants/browse-studies/")
+    # The page loads its cards from this JSON feed with JavaScript, so read the feed directly.
+    r = requests.get("https://www.medpace.com/study-participants/wp-json/em/v1/post_factory",
+                     params={"post_type": "em_study", "posts_per_page": 50, "term_counts": "false",
+                             "partial": "card-study", "orderby": "date", "order": "desc", "paged": 1},
+                     headers=UA, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+    if isinstance(data, str):   # the feed double-encodes its JSON
+        data = json.loads(data)
+    soup = BeautifulSoup("".join(data.get("posts") or []), "html.parser")
     out = []
     for a in soup.select("a.em-study-card"):
         details = clean(a.select_one(".em-study-card__details").get_text(" ")) if a.select_one(".em-study-card__details") else ""
@@ -349,8 +358,9 @@ def scrape_parexel():
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(user_agent=UA["User-Agent"])
-        page.goto(PAREXEL_URL, wait_until="networkidle", timeout=60000)
-        page.wait_for_timeout(4000)
+        page.goto(PAREXEL_URL, wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_selector("text=Learn More", timeout=45000)   # wait for the study list
+        page.wait_for_timeout(2000)
         text = page.inner_text("body")
         browser.close()
     body = text.split("Filter your criteria below to find a suitable trial:", 1)[-1]
