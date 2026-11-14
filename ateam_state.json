@@ -139,13 +139,13 @@
       "pay": "$4,250*",
       "dates": "Dec 01 - Dec 30"
     },
-    "celerion:CA51164-1A": {
-      "pay": "$4,250*",
-      "dates": "Dec 03 - Jan 02"
-    },
     "celerion:CA52371-3A": {
       "pay": "$3,000*",
       "dates": "Dec 02 - Dec 10"
+    },
+    "celerion:CA51164-1A": {
+      "pay": "$4,250*",
+      "dates": "Dec 03 - Jan 02"
     },
     "celerion:CA50737-1": {
       "pay": "$3,000*",
@@ -175,26 +175,6 @@
       "pay": "$5,500*",
       "dates": "Dec 06 - Dec 19"
     },
-    "celerion:CA53231-1": {
-      "pay": "$5,000*",
-      "dates": "Dec 09 - Dec 28"
-    },
-    "celerion:RR98765-1": {
-      "pay": "\u00a350*",
-      "dates": ""
-    },
-    "celerion:RR66666-1": {
-      "pay": "\u00a30*",
-      "dates": ""
-    },
-    "celerion:RR44444-1": {
-      "pay": "\u00a30*",
-      "dates": "Dec 31 - Jan 02"
-    },
-    "celerion:CB51757-21C": {
-      "pay": "\u00a32,650*",
-      "dates": ""
-    },
     "celerion:CB51757-21B": {
       "pay": "\u00a32,650*",
       "dates": ""
@@ -202,6 +182,22 @@
     "celerion:CA53926-1": {
       "pay": "$3,250*",
       "dates": "Nov 29 - Dec 28"
+    },
+    "celerion:CB47457-21": {
+      "pay": "$14,750*",
+      "dates": "Dec 01 - Jan 01"
+    },
+    "celerion:CB51757-21A": {
+      "pay": "\u00a32,650*",
+      "dates": ""
+    },
+    "celerion:CA53926-1A": {
+      "pay": "$3,250*",
+      "dates": "Nov 30 - Dec 21"
+    },
+    "celerion:CB51757-21": {
+      "pay": "\u00a32,650*",
+      "dates": ""
     },
     "celerion:CB51757-22A": {
       "pay": "\u00a32,650*",
