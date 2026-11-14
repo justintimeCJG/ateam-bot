@@ -1,0 +1,370 @@
+{
+  "icon_slots": {
+    "icon_slots:0027-0444 Lactating Women": [],
+    "icon_slots:0793 C2 - NEW Group": [
+      "November 16 12:30 PM",
+      "November 17 11:30 AM",
+      "November 18 8:30 AM",
+      "November 19 10:30 AM"
+    ],
+    "icon_slots:0887F2": [],
+    "icon_slots:1171B": [],
+    "icon_slots:1317": [],
+    "icon_slots:2758C MAD - Study Done, Appts Cxed": [],
+    "icon_slots:3018A Non-Childbearing Females ONLY- NEW": [
+      "November 17 8:30 AM",
+      "November 18 7:30 AM"
+    ],
+    "icon_slots:3054AC - New Appts": [],
+    "icon_slots:3705-0020 M": [
+      "November 16 8:30 AM",
+      "November 17 7:30 AM"
+    ],
+    "icon_slots:3705-0020 S": [
+      "November 16 7:30 AM"
+    ]
+  },
+  "icon": {
+    "icon:San Antonio, TX:850": {
+      "pay": "$12500",
+      "dates": ""
+    },
+    "icon:San Antonio, TX:843": {
+      "pay": "$23000",
+      "dates": ""
+    },
+    "icon:San Antonio, TX:840": {
+      "pay": "$23300",
+      "dates": ""
+    },
+    "icon:San Antonio, TX:825": {
+      "pay": "$2850",
+      "dates": ""
+    },
+    "icon:San Antonio, TX:833": {
+      "pay": "$43000",
+      "dates": ""
+    },
+    "icon:San Antonio, TX:816": {
+      "pay": "$15200",
+      "dates": ""
+    },
+    "icon:San Antonio, TX:827": {
+      "pay": "$27000",
+      "dates": ""
+    },
+    "icon:San Antonio, TX:793": {
+      "pay": "$20000",
+      "dates": ""
+    },
+    "icon:San Antonio, TX:672": {
+      "pay": "$10400",
+      "dates": ""
+    },
+    "icon:Salt Lake City, UT:734": {
+      "pay": "$38000",
+      "dates": ""
+    },
+    "icon:Salt Lake City, UT:846": {
+      "pay": "$6500",
+      "dates": ""
+    },
+    "icon:Salt Lake City, UT:842": {
+      "pay": "$12000",
+      "dates": ""
+    },
+    "icon:Salt Lake City, UT:849": {
+      "pay": "$12500",
+      "dates": ""
+    },
+    "icon:Salt Lake City, UT:753": {
+      "pay": "$8000",
+      "dates": ""
+    },
+    "icon:Salt Lake City, UT:847": {
+      "pay": "$17000",
+      "dates": ""
+    },
+    "icon:Salt Lake City, UT:819": {
+      "pay": "$43000",
+      "dates": ""
+    },
+    "icon:Salt Lake City, UT:797": {
+      "pay": "$27000",
+      "dates": ""
+    },
+    "icon:Salt Lake City, UT:811": {
+      "pay": "$10000",
+      "dates": ""
+    },
+    "icon:Salt Lake City, UT:774": {
+      "pay": "$9500",
+      "dates": ""
+    },
+    "icon:Lenexa, KS:763": {
+      "pay": "$4400",
+      "dates": ""
+    },
+    "icon:Lenexa, KS:841": {
+      "pay": "$43000",
+      "dates": ""
+    },
+    "icon:Lenexa, KS:809": {
+      "pay": "$10500",
+      "dates": ""
+    },
+    "icon:Lenexa, KS:851": {
+      "pay": "$12500",
+      "dates": ""
+    },
+    "icon:Lenexa, KS:844": {
+      "pay": "$21750",
+      "dates": ""
+    },
+    "icon:Lenexa, KS:812": {
+      "pay": "$5800",
+      "dates": ""
+    }
+  },
+  "celerion": {
+    "celerion:CA48121-5B": {
+      "pay": "$4,000*",
+      "dates": "Nov 18 - Nov 25"
+    },
+    "celerion:CA52371-3": {
+      "pay": "$3,000*",
+      "dates": "Nov 29 - Dec 07"
+    },
+    "celerion:CA51164-1": {
+      "pay": "$4,250*",
+      "dates": "Dec 01 - Dec 30"
+    },
+    "celerion:CA51164-1A": {
+      "pay": "$4,250*",
+      "dates": "Dec 03 - Jan 02"
+    },
+    "celerion:CA52371-3A": {
+      "pay": "$3,000*",
+      "dates": "Dec 02 - Dec 10"
+    },
+    "celerion:CA50737-1": {
+      "pay": "$3,000*",
+      "dates": "Nov 30 - Dec 08"
+    },
+    "celerion:CA48121-6": {
+      "pay": "$3,750*",
+      "dates": "Dec 01 - Dec 10"
+    },
+    "celerion:CA48121-6A": {
+      "pay": "$3,750*",
+      "dates": "Dec 02 - Dec 10"
+    },
+    "celerion:CB48121-21": {
+      "pay": "$5,500*",
+      "dates": "Dec 02 - Dec 17"
+    },
+    "celerion:CE49469-31": {
+      "pay": "$13,500*",
+      "dates": "Dec 01 - Jan 09"
+    },
+    "celerion:CB52371-21": {
+      "pay": "$8,500*",
+      "dates": "Dec 04 - Dec 21"
+    },
+    "celerion:CB48121-21A": {
+      "pay": "$5,500*",
+      "dates": "Dec 06 - Dec 19"
+    },
+    "celerion:CB51757-21C": {
+      "pay": "\u00a32,650*",
+      "dates": ""
+    },
+    "celerion:CB51757-21B": {
+      "pay": "\u00a32,650*",
+      "dates": ""
+    },
+    "celerion:CA53926-1": {
+      "pay": "$3,250*",
+      "dates": "Nov 29 - Dec 28"
+    },
+    "celerion:CB47457-21": {
+      "pay": "$14,750*",
+      "dates": "Dec 01 - Jan 01"
+    },
+    "celerion:CB51757-21A": {
+      "pay": "\u00a32,650*",
+      "dates": ""
+    },
+    "celerion:CA53926-1A": {
+      "pay": "$3,250*",
+      "dates": "Nov 30 - Dec 21"
+    },
+    "celerion:CB51757-21": {
+      "pay": "\u00a32,650*",
+      "dates": ""
+    }
+  },
+  "trialmed": {
+    "trialmed:3152446c-aus": {
+      "pay": "$4,000",
+      "dates": "Starts 2026-09-03"
+    },
+    "trialmed:3149191-lv": {
+      "pay": "$6,800",
+      "dates": "Starts 2026-10-30"
+    },
+    "trialmed:31129101-lv": {
+      "pay": "$30,100",
+      "dates": ""
+    },
+    "trialmed:3152446b-aus": {
+      "pay": "$4,675",
+      "dates": "Starts 2026-09-03"
+    },
+    "trialmed:3152446a-aus": {
+      "pay": "$4,000",
+      "dates": "Starts 2026-09-03"
+    },
+    "trialmed:3056041-aus": {
+      "pay": "$1,750",
+      "dates": "Starts 2026-09-03"
+    },
+    "trialmed:31533452-aus": {
+      "pay": "$39,380",
+      "dates": "Starts 2026-10-20"
+    },
+    "trialmed:3142952-aus-sad": {
+      "pay": "$4,725",
+      "dates": "Starts 2026-09-03"
+    },
+    "trialmed:3153345-lv-sad": {
+      "pay": "$27,000",
+      "dates": "Starts 2026-06-25"
+    },
+    "trialmed:3147540-aus": {
+      "pay": "$12,000",
+      "dates": "Starts 2026-11-18"
+    },
+    "trialmed:3132098-lv-sad": {
+      "pay": "$9,050",
+      "dates": "Starts 2026-06-25"
+    },
+    "trialmed:3119492-sad-lv": {
+      "pay": "$27,400",
+      "dates": "Starts 2026-06-29"
+    },
+    "trialmed:3143213-lv": {
+      "pay": "$18,000",
+      "dates": "Starts 2026-06-03"
+    },
+    "trialmed:3142480-aus": {
+      "pay": "$8,430",
+      "dates": "Starts 2026-04-14"
+    },
+    "trialmed:3147042-aus": {
+      "pay": "$9,150",
+      "dates": "Starts 2026-05-05"
+    }
+  },
+  "medpace": {},
+  "fortrea": {
+    "fortrea:/778|781236 1": {
+      "pay": "$22,524 to $23,132",
+      "dates": ""
+    },
+    "fortrea:/en-us/clinical-research/781236-clinical-research-study-adults-glp-1-medication|781236 3": {
+      "pay": "$22,524 to $23,132",
+      "dates": ""
+    },
+    "fortrea:/en-us/clinical-research/781236-switch-dal|781236": {
+      "pay": "$22,524 to $23,132",
+      "dates": ""
+    },
+    "fortrea:/en-us/clinical-research/782382-A|782382": {
+      "pay": "$3,127",
+      "dates": "Jan 04 2026 - Jan 11 2026"
+    },
+    "fortrea:/en-us/clinical-research/781681-healthy-men-women-non-childbearing-potential-age-18-65-needed-0|781681 A4a": {
+      "pay": "$14,836",
+      "dates": "Nov 12 2026 - Apr 30 2027"
+    },
+    "fortrea:/en-us/clinical-research/785072-healthy-overweight-adults-age-18-60-needed|785072": {
+      "pay": "$22,868",
+      "dates": "Nov 18 2026 - Jun 03 2027"
+    },
+    "fortrea:/564|783564 6a": {
+      "pay": "$36,248",
+      "dates": "Nov 19 2026 - Jun 09 2027"
+    },
+    "fortrea:/en-us/clinical-research/5109840|5109840 3-6": {
+      "pay": "$18,000",
+      "dates": "Nov 23 2026 - Jun 08 2027"
+    },
+    "fortrea:/en-us/clinical-research/783564-DAL|783564 7": {
+      "pay": "$36,248",
+      "dates": "Nov 24 2026 - Jun 14 2027"
+    },
+    "fortrea:/en-us/clinical-research/5109595|5109595 Part A (1-4)": {
+      "pay": "$44,900",
+      "dates": "Nov 28 2026 - Apr 23 2028"
+    },
+    "fortrea:/783028|783028": {
+      "pay": "$11,988",
+      "dates": "Nov 29 2026 - Feb 25 2027"
+    },
+    "fortrea:/en-us/clinical-research/781648-healthy-men-and-women-non-childbearing-potential-age-18-65-needed|781648 10": {
+      "pay": "$15,040",
+      "dates": "Dec 01 2026 - Jan 06 2027"
+    },
+    "fortrea:/en-us/clinical-research/782640-healthy-men-age-18-55-needed|782640 1": {
+      "pay": "$10,784",
+      "dates": "Dec 03 2026 - Dec 29 2026"
+    },
+    "fortrea:/en-us/clinical-research/779849-looking-healthy-overweight-adults-0|779849 A6B": {
+      "pay": "$74,322",
+      "dates": "Dec 05 2026 - Apr 30 2028"
+    },
+    "fortrea:/en-us/clinical-research/781681-healthy-men-women-non-childbearing-potential-age-18-65-needed|781681 A": {
+      "pay": "$16,380",
+      "dates": "Dec 07 2026 - May 25 2027"
+    },
+    "fortrea:/808|783808 A5": {
+      "pay": "$11,964",
+      "dates": "Dec 28 2026 - Mar 09 2027"
+    },
+    "fortrea:/en-us/clinical-research/778951-healthy-males-and-females-age-18-60-0|778951 B": {
+      "pay": "$6,956",
+      "dates": "Jan 06 2027 - Feb 01 2027"
+    }
+  },
+  "altasciences": {
+    "altasciences:89470": {
+      "pay": "$375",
+      "dates": "Click \u00ab See details \u00bb for more information."
+    },
+    "altasciences:89437": {
+      "pay": "$6,800",
+      "dates": "15 to 23 Nov"
+    },
+    "altasciences:89471": {
+      "pay": "$5,550",
+      "dates": "30 Nov to 4 Dec"
+    },
+    "altasciences:89472": {
+      "pay": "$5,550",
+      "dates": "1 to 5 Dec"
+    },
+    "altasciences:89299": {
+      "pay": "$3,550",
+      "dates": "7 to 11 Dec"
+    },
+    "altasciences:89300": {
+      "pay": "$3,550",
+      "dates": "9 to 13 Dec"
+    },
+    "altasciences:89493": {
+      "pay": "$16,800",
+      "dates": "20 to 23 Dec, 11 Jan to 3 Feb"
+    }
+  }
+}
