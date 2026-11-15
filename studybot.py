@@ -486,7 +486,8 @@ def parexel_post(src, status, item):
     if title:
         lines.append(title)
     info_at = next((i for i, l in enumerate(cl) if re.match(r"Study Information", l, re.I)), len(cl))
-    info = [l for l in cl[info_at + 1:] if not re.fullmatch(r"Ages?\s*\d+\+?(?:\s*-\s*\d+)?", l, re.I)]
+    info = [l for l in cl[info_at + 1:] if not re.fullmatch(r"Ages?\s*\d+\+?(?:\s*-\s*\d+)?", l, re.I)
+            and not re.search(r"\brefer", l, re.I)]  # never post referral info
     info_text = " ".join(info)
     pays = money_values(card) or money_values(detail)
     if pays:
@@ -518,6 +519,12 @@ def parexel_post(src, status, item):
 
 
 def build_post(src, status, item):
+    """Build the post, then drop any line about referrals (never posted)."""
+    text = _build_post(src, status, item)
+    return "\n".join(l for l in text.split("\n") if not re.search(r"\brefer", l, re.I)).strip()
+
+
+def _build_post(src, status, item):
     if src["style"] == "parexel":
         return parexel_post(src, status, item)
     if src["style"] == "icon_ks":
