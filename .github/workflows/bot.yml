@@ -76,7 +76,9 @@ jobs:
                           continue
                       item = next(iter(cur.values()))
                       await sb.fill_details(ctx, src, item)
-                      ok = sb.send(sb.build_post(src, "New", item))
+                      msg = sb.build_post(src, "New", item)
+                      print("----- " + key + "\n" + msg)
+                      ok = sb.send(msg)
                       print(key, "posted" if ok else "FAILED")
                       sent += ok
                       time.sleep(3)
