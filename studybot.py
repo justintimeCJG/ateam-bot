@@ -74,7 +74,7 @@ SOURCES = [
          list_urls=["https://pxlcrs.my.site.com/portal/s/triallistla?loc=LA&language=en_US"],
          mode="text", start="find a suitable trial:", end="Get Started", split=r"\n\s*Learn More\s*\n",
          key_re=r"\b(\d{6})\b", wait=8000, detail="click"),
-    dict(key="fortrea", header=["Fortrea", "{status}: (866)429-3700"], status_in_header=True, style="plain",
+    dict(key="fortrea", header=["Fortrea", "{status}: (866)429-3700"], status_in_header=True, style="fortrea",
          list_urls=[f"https://www.fortreaclinicaltrials.com/en-us/clinical-research/browse-studies?page={i}"
                     for i in range(4)],
          mode="cards", card="div.view-studies-us tbody tr", link="td.views-field-title a",
@@ -518,6 +518,148 @@ def parexel_post(src, status, item):
     return "\n".join(lines).strip()
 
 
+FT_KEY = (r"(?P<key>Check[- ]?in|Check[- ]?out|Follow[- ]?up\s+visits?|Out[- ]?patient\s+visits?|"
+          r"Phone\s+Call\s+Dates|Phone\s+calls?|Calls?)\s*:?")
+FT_GROUP = r"(?P<group>\b(?:Cohort|Group)\s+[\w-]+(?:\s+Dates)?\s*:?|\bOR\b|(?<![\w/])[A-Z][a-z]?\d*[a-z]?:(?=\s*Check))"
+FT_DATE = (r"(?P<num>\d{1,2}/\d{1,2}/\d{2,4})|(?P<mon>" + MONTHS + r")(?:\s+(?P<yr>\d{4}))?\s*:?\s*(?P<d1>\d{1,2})?"
+           r"|(?P<day>\b\d{1,2}\b)")
+
+
+def read_fortrea_dates(detail, start=None):
+    """Fortrea 'Additional Details' -> [(cohort, stays, opvs, calls)].
+    Handles 'Check-in: Nov 24 & Dec 6', 'Group A5: Check-in: Dec 28', 'Cohort 2a ... OR Cohort 3 ...',
+    'Period 2 Check-in: Jan 5', 'Check-in: Sat. 11/28/26', 'Follow-up Visits: Dec: 21, 28 Jan 4, 11'."""
+    from datetime import datetime as dt, timedelta
+    a = detail.find("Additional Details")
+    if a < 0:
+        return []
+    b = detail.find("BMI Calculator", a)
+    text = detail[a + len("Additional Details"): b if b > 0 else None]
+    text = "\n".join(l for l in text.splitlines() if not re.search(r"[{};]", l))     # drop CSS
+    text = re.sub(r"\([^)]*\)", " ", text)                                             # (Please call us ...)
+    text = re.sub(r"\bPeriod\s+\d+\b|\b(?:Mon|Tues?|Wed|Thu|Thurs|Fri|Sat|Sun)\.", " ", text, flags=re.I)
+    text = re.sub(r"(\d)(?=" + MONTHS + ")", r"\1 ", text)                             # '31June' -> '31 June'
+    year = start.year if start else datetime.now().year
+    last, month = start, None
+    cohorts, cur, key = [], None, None
+
+    def new_cohort(name=""):
+        nonlocal last, year, month
+        last, month = start, None                       # each cohort's dates start from the study start
+        year = start.year if start else datetime.now().year
+        c = dict(name=name.strip().rstrip(":").replace(" Dates", "").strip(), cin=[], cout=[], opv=[], calls=[])
+        cohorts.append(c)
+        return c
+
+    def add(d):
+        nonlocal last
+        if last and d < last - timedelta(days=60):
+            d = d.replace(year=d.year + 1)
+        last = d
+        bucket = {"check-in": "cin", "check-out": "cout", "follow": "opv", "out": "opv"}.get(key, "calls")
+        cur[bucket].append(d)
+
+    for m in re.finditer(FT_KEY + "|" + FT_GROUP + "|" + FT_DATE, text, re.I):
+        if m.group("key"):
+            k = re.sub(r"\s+", " ", m.group("key").lower())
+            key = ("check-in" if re.match(r"check[- ]?in", k) else "check-out" if k.startswith("check")
+                   else "follow" if k.startswith("follow") else "out" if k.startswith("out") else "calls")
+            if cur is None:
+                cur = new_cohort()
+            continue
+        if m.group("group"):
+            g = m.group("group")
+            if g.upper() == "OR":
+                cur, key = None, None
+            elif cur is None or cur["cin"] or cur["opv"]:
+                cur, key = new_cohort(g), None
+            else:
+                cur["name"] = g.strip().rstrip(":").replace(" Dates", "").strip()
+            continue
+        if not key or cur is None:
+            continue
+        try:
+            if m.group("num"):
+                mm, dd, yy = m.group("num").split("/")
+                yy = int(yy) + (2000 if len(yy) == 2 else 0)
+                d = dt(yy, int(mm), int(dd))
+                month, year = d.month, d.year
+                last = None
+                add(d)
+            elif m.group("mon"):
+                month = _cal_day(m.group("mon")[:3] + " 1 2000").month
+                if m.group("yr"):
+                    year, last = int(m.group("yr")), None
+                if m.group("d1"):
+                    add(dt(year, month, int(m.group("d1"))))
+            elif m.group("day") and month:
+                add(dt(year, month, int(m.group("day"))))
+        except ValueError:
+            pass
+    out = []
+    for c in cohorts:
+        stays = list(zip(c["cin"], c["cout"]))
+        if stays or c["opv"]:
+            out.append((c["name"], stays, sorted(c["opv"]), sorted(c["calls"])))
+    return out
+
+
+def fortrea_post(src, status, item):
+    """Fortrea style, e.g.
+    $10,784 Fortrea Madison / (866)429-3700 / Study #782640 G1 / NEW / MALES ONLY / Age: 18-55 /
+    Bmi: 18-30 / In 🏡: / 12/3-23 with opv: 12/29"""
+    from datetime import datetime as dt, timedelta
+    card, detail = item.get("text") or "", item.get("detail") or ""
+    cl = lines_of(card)
+    loc = re.search(r"Location\s*\n+\s*([^\n,]+)", detail) or re.search(r"\n([A-Z][A-Za-z .]+),\s*[A-Z][a-z]+", card)
+    city = loc.group(1).strip() if loc else ""
+    pays = money_values(card) or money_values(detail)
+    lines = [f"{fmt_money(max(pays)) if pays else ''} Fortrea {city}".strip(), "(866)429-3700"]
+    sm = re.match(r"(\d{6,7})\s*(.*)", item.get("study", "").strip())
+    if sm:
+        grp = sm.group(2).strip()
+        lines.append(f"Study #{sm.group(1)}" + (f" G{grp}" if re.fullmatch(r"\d+[a-z]?", grp) else f" {grp}" if grp else ""))
+    lines.append("RE-RELEASED" if status == "Reposted" else "NEW")
+    gender = re.search(r"Gender\s*\n+\s*([^\n]+)", detail)
+    if gender:
+        g = gender.group(1).lower()
+        lines.append("M/F" if ("male" in g.replace("female", "") and "female" in g) else
+                     "FEMALES ONLY" if "female" in g else "MALES ONLY" if "male" in g else gender.group(1).strip())
+    age = re.search(r"\bAge\s*\n+\s*(\d+\s*-\s*\d+|\d+\+)", detail) or re.search(r"\n(\d{2}\s*-\s*\d{2})\n", card)
+    if age:
+        lines.append(f"Age: {re.sub(r'\s+', '', age.group(1))}")
+    bmi = re.search(r"BMI of:\s*([\d.]+\s*(?:-\s*[\d.]+|\+))", detail)
+    if bmi:
+        lines.append(f"Bmi: {re.sub(r'\s+', '', bmi.group(1))}")
+    rng = re.search(r"(" + MONTHS + r"\s+\d{1,2}\s+\d{4})\s*-\s*(" + MONTHS + r"\s+\d{1,2}\s+\d{4})", detail + "\n" + card)
+    start = _cal_day(rng.group(1)) if rng else None
+    end = _cal_day(rng.group(2)) if rng else None
+    groups = read_fortrea_dates(detail, start)
+    sched = next((l for l in cl if re.search(r"\bstays?\b|nights?|visits?", l, re.I)), "")
+    if not groups and start:
+        # no date list on the page: '1 stay of 20 nights & 1 follow-up visit' + 'Dec 03 2026 - Dec 29 2026'
+        one = re.match(r"1 stay of (\d+) nights?(?:\s*(?:&|and|,|plus)\s*1 (?:follow[- ]?up|out-?patient) visit)?", sched, re.I)
+        if one:
+            cout = start + timedelta(days=int(one.group(1)))
+            opv = [end] if end and "visit" in sched.lower() and end > cout else []
+            groups = [("", [(start, cout)], opv, [])]
+    for name, stays, opvs, calls in groups:
+        lines.append("In \U0001f3e1:" if len(groups) == 1 or not name else f"In \U0001f3e1 ({name}):")
+        spans = ", ".join(_span(x, y) for x, y in stays)
+        if opvs:
+            lines += [f"{spans} with opv{'s' if len(opvs) > 1 else ''}:".strip(), _opv_list(opvs)]
+        elif spans:
+            lines.append(spans)
+        if calls:
+            lines.append(f"Calls: {_opv_list(calls)}")
+    if not groups:
+        if sched:
+            lines.append(sched)
+        if rng:
+            lines.append(f"Dates: {rng.group(1)} - {rng.group(2)}")
+    return "\n".join(lines)
+
+
 def build_post(src, status, item):
     """Build the post, then drop any line about referrals (never posted)."""
     text = _build_post(src, status, item)
@@ -525,6 +667,8 @@ def build_post(src, status, item):
 
 
 def _build_post(src, status, item):
+    if src["style"] == "fortrea":
+        return fortrea_post(src, status, item)
     if src["style"] == "parexel":
         return parexel_post(src, status, item)
     if src["style"] == "icon_ks":
