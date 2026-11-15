@@ -89,7 +89,8 @@ SOURCES = [
          mode="cards", card="div.inner-container", link="a.study-page-link", detail=True,
          study_re=r"\b(C[A-Z]\d{5}-\w+)", skip_re=r"^starts in"),
     dict(key="trialmed", header=["{STATUS} Trialmed formerly PPD", "(800)773-2782"], status_in_header=True,
-         style="plain", list_urls=[f"https://trialmed.com/find-a-study/?paged={i}" for i in range(1, 7)],
+         include=r"No major health conditions|Non-childbearing potential|Healthy (?:volunteers|adults|men|women)",
+         style="trialmed", list_urls=[f"https://trialmed.com/find-a-study/?paged={i}" for i in range(1, 7)],
          mode="cards", card="div.wp-study-card", link="a.wp-study-card-title", title="a.wp-study-card-title",
          detail=True),
     dict(key="alta_kc", header=["{status}", "Altasciences KS (913)213-2970", "", "Altasciences", "VCT and RSVP",
@@ -693,6 +694,113 @@ def abbvie_extra(text):
     return lines
 
 
+TM_DATE = r"\d{1,2}/\d{1,2}(?:/\d{2,4})?"
+TM_WEEKDAY = r"\b(?:Mon|Tues?|Wed|Thu|Thurs|Fri|Sat|Sun)[a-z]*\.*\s*"
+
+
+def _tm_dates(text):
+    """'12/24*, 12/31, 1/14/27' -> '12/24, 31, 1/14' (month shown when it changes)."""
+    out, last = [], None
+    for d in re.findall(TM_DATE, text):
+        m, day = d.split("/")[:2]
+        out.append(f"{int(m)}/{int(day)}" if m != last else str(int(day)))
+        last = m
+    return ", ".join(out)
+
+
+def _tm_stays(text):
+    """'Wed. 11/18 - Fri. 11/20' -> '11/18-20'; '11/30 - 12/9' -> '11/30-12/9'."""
+    text = re.sub(TM_WEEKDAY, " ", text)
+    out = []
+    for a, b in re.findall(f"({TM_DATE})\\s*[–—-]+\\s*({TM_DATE})", text):
+        (am, ad), (bm, bd) = a.split("/")[:2], b.split("/")[:2]
+        out.append(f"{int(am)}/{int(ad)}-{int(bd)}" if am == bm else f"{int(am)}/{int(ad)}-{int(bm)}/{int(bd)}")
+    return ", ".join(out)
+
+
+def read_trialmed(detail):
+    """'What's the commitment?' -> counts and {group: {stay, opv, calls}} (group '' = not named)."""
+    a = detail.find("commitment")
+    if a < 0:
+        return {}, {}
+    b = detail.find("How do I participate", a)
+    text = detail[a: b if b > 0 else None]
+    text = re.sub(r"\([^)]*\)", " ", text)                       # (holiday, will likely change)
+    counts, groups, order = {}, {}, []
+    parts = re.split(r"(?m)^\s*(\d+)\s+(Overnight|Outpatient|Calls?)\b.*$", text)
+    for i in range(1, len(parts) - 2, 3):
+        n, kind, body = parts[i], parts[i + 1].lower(), parts[i + 2]
+        kind = "stay" if kind.startswith("over") else "opv" if kind.startswith("out") else "calls"
+        counts[kind] = int(n)
+        bits = re.split(r"Group:?\s*([\w!]+)\s*:", body)
+        chunks = [("", bits[0])] + [(bits[j], bits[j + 1]) for j in range(1, len(bits) - 1, 2)]
+        unnamed = [c for c in re.split(r"\n\s*•", chunks[0][1]) if re.search(TM_DATE, c)]
+        if len(chunks) == 1 and len(unnamed) > 1 and len(unnamed) == len(order):
+            chunks = list(zip(order, unnamed))                   # bullets in the same order as the groups
+        for g, chunk in chunks:
+            g = g.replace("!", "1")
+            if g and g not in order:
+                order.append(g)
+            # keep 'Part 1:' / 'Part 2:' labels with their dates
+            pieces = re.split(r"(Part\s*\d+)\s*:", chunk)
+            if kind == "stay":
+                val = _tm_stays(chunk)
+            elif len(pieces) > 1:
+                val = "; ".join(f"{pieces[k]}: {_tm_dates(pieces[k + 1])}" for k in range(1, len(pieces) - 1, 2)
+                                if re.search(TM_DATE, pieces[k + 1]))
+            else:
+                val = _tm_dates(chunk)
+            if val:
+                groups.setdefault(g, {})[kind] = val
+    return counts, {g: groups[g] for g in ([""] if "" in groups else []) + order if g in groups}
+
+
+def trialmed_post(src, status, item):
+    """Trialmed healthy-volunteer style: study #, location, pay, age/sex/BMI, then for each group
+    'In 🏡 (Group F): 11/18-20, 12/3-4' with its outpatient and phone-call dates."""
+    card, detail = item.get("text") or "", item.get("detail") or ""
+    cl = lines_of(card)
+    lines = [h.replace("{STATUS}", status.upper()).replace("{status}", status) for h in src["header"]]
+    num = re.match(r"\s*(\S+)\s+(.*)", cl[0]) if cl else None
+    loc = re.search(r"Location\s*\n+\s*([^\n]+)", detail)
+    study = num.group(1) if num else item.get("study", "")
+    place = loc.group(1).strip() if loc else (num.group(2) if num else "")
+    lines.append(f"Study #{study}" + (f" - {place}" if place else ""))
+    comp = re.search(r"Compensation\s*\n+\s*([^\n]+)", detail)
+    pays = money_values(card) or money_values(detail)
+    if comp and money_values(comp.group(1)):
+        lines.append(comp.group(1).strip())
+    elif pays:
+        lines.append(f"Up to {fmt_money(max(pays))}")
+    who = [l for l in cl if re.match(r"(Age|Sex|BMI):", l)]
+    if who:
+        lines.append(" | ".join(who))
+    counts, groups = read_trialmed(detail)
+    if counts:
+        bits = [f"{counts['stay']} nights in-house" if counts.get("stay") else "",
+                f"{counts['opv']} outpatient" if counts.get("opv") else "",
+                f"{counts['calls']} call{'s' if counts['calls'] != 1 else ''}" if counts.get("calls") else ""]
+        lines.append(", ".join(b for b in bits if b))
+    shared = groups.pop("", {})
+    named = list(groups.items()) or ([("", shared)] if shared else [])
+    for g, v in named:
+        v = dict(shared, **v) if g else v
+        lines.append(f"In \U0001f3e1 (Group {g}):" if g else "In \U0001f3e1:")
+        if v.get("stay"):
+            lines.append(v["stay"])
+        if v.get("opv"):
+            lines.append(f"Outpatient: {v['opv']}")
+        if v.get("calls"):
+            lines.append(f"Phone call{'s' if ',' in v['calls'] or ';' in v['calls'] else ''}: {v['calls']}")
+    if not named:
+        start = re.search(r"Check-in date\s*\n+\s*([^\n]+)", detail)
+        if start:
+            lines.append(f"Check-in: {start.group(1).strip()}")
+    if item.get("url"):
+        lines.append(item["url"])
+    return "\n".join(lines)
+
+
 def build_post(src, status, item):
     """Build the post, then drop any line about referrals (never posted)."""
     text = _build_post(src, status, item)
@@ -700,6 +808,8 @@ def build_post(src, status, item):
 
 
 def _build_post(src, status, item):
+    if src["style"] == "trialmed":
+        return trialmed_post(src, status, item)
     if src["key"] == "abbvie":
         base = _build_post(dict(src, key="abbvie_base"), status, dict(item, detail=""))
         lines = base.split("\n")
@@ -859,6 +969,8 @@ async def read_source(ctx, src, dump=False):
             before = len(found)
             for c in cards:
                 if src.get("exclude") and re.search(src["exclude"], c["text"], re.I):
+                    continue
+                if src.get("include") and not re.search(src["include"], c["text"], re.I):
                     continue
                 if src.get("need_money", True) and not money_values(c["text"]):
                     continue
