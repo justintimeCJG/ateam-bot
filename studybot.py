@@ -139,7 +139,7 @@ DATE_RULES = [
     (r"Clinic stay\s*\n*\s*([^\n]+)", "{}"),
     (r"Check[- ]?In:?[ \t]*\n?[ \t]*([^\n]*\d[^\n]*?)\s*(?:\n|$)[\s\S]{0,40}?Check[- ]?Out\s*:?[ \t]*\n?[ \t]*([^\n]*\d[^\n]*)", "{} - {}"),
     (r"Check[- ]?In:?[ \t]*\n?[ \t]*([^\n]*\d[^\n]*)", "Check-in {}"),
-    (r"\bDates?:\s*([^\n$]*\d[^\n$]*)", "{}"),
+    (r"\bDates?:[ \t]*([^\n$]*\d[^\n$]*)", "{}"),
 ]
 
 
@@ -187,6 +187,8 @@ def extract(text):
         f["ages"] = f"{a} - {b}"
     if m := BMI.search(text):
         f["bmi"] = f"{m.group(1)} - {m.group(2)}"
+    elif m := re.search(r"\bbmi\b[^0-9]{0,25}(\d{2}(?:\.\d+)?)\s*(\+|or\s+(?:above|higher|more|greater|over))", text, re.I):
+        f["bmi"] = f"{m.group(1)}+"
     # count from the one line that describes the stays when there is one,
     # so pages that repeat the schedule aren't counted twice
     stay_line = next((l for l in counted.splitlines() if NIGHTS.search(l)), "")
@@ -355,8 +357,8 @@ def build_post(src, status, item):
         lines.append(f"bmi {f['bmi']}" if style == "icon" else f"BMI {f['bmi']}")
     if "stays" in f:
         lines.append(f["stays"])
-    if "dates" in f and style != "icon":
-        lines.append(f"Dates: {f['dates']}")
+    if style != "icon":
+        lines.append(f"Dates: {f['dates']}" if "dates" in f else "Dates: not listed")
     if url:
         lines.append(url)
     return "\n".join(lines).strip()
