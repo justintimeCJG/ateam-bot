@@ -2,11 +2,13 @@ name: A Team Bot
 
 on:
   schedule:
-    - cron: "*/15 * * * *"   # every 15 minutes (GitHub may start runs a few minutes late)
+    # every 10 minutes, about 6am-7pm Central (times below are UTC; the bot
+    # itself skips anything outside 6am-7pm Central)
+    - cron: "4-59/10 0,11-23 * * *"
   workflow_dispatch:          # lets you press "Run workflow" by hand
 
 permissions:
-  contents: write             # so the bot can save ateam_state.json
+  contents: write             # so the bot can save what it has already posted
 
 concurrency:
   group: ateam-bot
@@ -15,7 +17,9 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    env:
+      TZ: America/Chicago
     steps:
       - uses: actions/checkout@v4
 
@@ -27,19 +31,18 @@ jobs:
       - name: Install requirements
         run: pip install -r requirements.txt
 
-      - name: Install hidden browser (for Parexel)
+      - name: Install hidden browser
         run: python -m playwright install --with-deps chromium
 
       - name: Check sites and post to Telegram
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          POST_FOOTER: ${{ vars.POST_FOOTER }}
-        run: python ateam_bot.py
+        run: python studybot.py --once
 
       - name: Save what the bot has seen
+        if: always()
         run: |
           git config user.name "A Team Bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ateam_state.json
+          git add studybot.db config.json
           git diff --cached --quiet || (git commit -m "Update seen studies" && git pull --rebase && git push)
