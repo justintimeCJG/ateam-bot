@@ -111,6 +111,7 @@ SOURCES = [
     dict(key="frontage", header=["{brand}, Frontage, Seacaucus NJ, NonVCT", "877-298-9071"], status_in_header=True,
          no_date=True, style="passthrough", list_urls=["https://www.frontagelab.com/clinical-studies/"],
          mode="links", link_re=r"frontagelab\.com/clinical-studies/(?!referral)[\w-]+/?$", detail=True,
+         post_url="https://www.frontagelab.com/clinical-studies/",
          need_money=False),
 ]
 # Worldwide Clinical Trials' study page now forwards to Fortrea, which is covered above.
@@ -801,6 +802,23 @@ def trialmed_post(src, status, item):
     return "\n".join(lines)
 
 
+def frontage_body(detail):
+    """The study description on a Frontage page: after the standard CDC notice, before the
+    'Application for Clinical Research Study' form."""
+    if not detail:
+        return ""
+    a = re.search(r"as recommended by the CDC\.?", detail)
+    if a:
+        start = a.end()
+    else:
+        s = re.search(r"IN THIS SECTION\s*\n[^\n]*\n", detail)
+        start = s.end() if s else 0
+    b = detail.find("Application for Clinical Research Study", start)
+    text = "\n".join(l.rstrip() for l in detail[start: b if b > 0 else None].splitlines()).strip()
+    text = re.sub(r"\n{4,}", "\n\n\n", text)
+    return text[:3500]
+
+
 def build_post(src, status, item):
     """Build the post, then drop any line about referrals (never posted)."""
     text = _build_post(src, status, item)
@@ -849,7 +867,10 @@ def _build_post(src, status, item):
         return "\n".join([item.get("title", "")] + head + body + ["", url]).strip()
 
     if style == "passthrough":
-        return "\n".join(lines + ["\n".join(lines_of(detail or card))[:1500], url]).strip()
+        # Frontage: header line, blank line, the study's own description, phone, studies page
+        body = frontage_body(detail) or "\n".join(lines_of(detail or card))[:3500]
+        top = [l for l in lines if l not in head[1:]]
+        return "\n".join(top + ["", body] + head[1:] + [src.get("post_url", url)]).strip()
 
     # details: list card first; the study's own page fills gaps
     f = extract(card)
