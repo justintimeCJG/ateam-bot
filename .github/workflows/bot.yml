@@ -6,6 +6,10 @@ on:
     # itself skips anything outside 6am-7pm Central)
     - cron: "4-59/10 0,11-23 * * *"
   workflow_dispatch:          # lets you press "Run workflow" by hand
+    inputs:
+      test_posts:
+        description: "Test: post this many sample studies (one per site) instead of a normal check. 0 = normal run"
+        default: "0"
 
 permissions:
   contents: write             # so the bot can save what it has already posted
@@ -20,6 +24,8 @@ jobs:
     timeout-minutes: 25
     env:
       TZ: America/Chicago
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TEST_POSTS: ${{ github.event.inputs.test_posts || '0' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -35,12 +41,42 @@ jobs:
         run: python -m playwright install --with-deps chromium
 
       - name: Check sites and post to Telegram
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        if: env.TEST_POSTS == '0'
         run: python studybot.py --once
 
+      - name: Post sample studies (test)
+        if: env.TEST_POSTS != '0'
+        run: |
+          python - <<'PY'
+          import asyncio, os, time
+          import studybot as sb
+          from playwright.async_api import async_playwright
+          picks = ["icon_sa", "celerion", "fortrea", "parexel_bal", "drvince", "trialmed",
+                   "alta_kc", "abbvie", "medpace", "alta_la", "icon_sa_screenings"]
+          n = int(os.environ["TEST_POSTS"])
+          async def main():
+              async with async_playwright() as p:
+                  ctx = await (await p.chromium.launch()).new_context()
+                  sent = 0
+                  for key in picks:
+                      if sent >= n:
+                          break
+                      src = next(s for s in sb.SOURCES if s["key"] == key)
+                      cur = await sb.read_source(ctx, src)
+                      if not cur:
+                          print(key, "no studies listed")
+                          continue
+                      item = next(iter(cur.values()))
+                      await sb.fill_details(ctx, src, item)
+                      ok = sb.send(sb.build_post(src, "New", item))
+                      print(key, "posted" if ok else "FAILED")
+                      sent += ok
+                      time.sleep(3)
+          asyncio.run(main())
+          PY
+
       - name: Save what the bot has seen
-        if: always()
+        if: always() && env.TEST_POSTS == '0'
         run: |
           git config user.name "A Team Bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
