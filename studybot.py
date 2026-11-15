@@ -298,9 +298,52 @@ def celerion_post(item):
     return "\n".join(lines)
 
 
+def icon_post(src, status, item):
+    """ICON style, e.g.
+    November-06-2026 / New: / Icon VCT, San Antonio, TX / phone / 3705-0020S Enrolling / Cohort 3 /
+    $15200 / $660.87 per day IP and OPV / Healthy Volunteers. / Male/Female Age 18 - 65 /
+    bmi: 30.0+ or 27.0+ / 1 screening visit, 1 stay of 4 nights and 19 follow-up visits. / link"""
+    card, detail = item.get("text") or "", item.get("detail") or ""
+    cl = lines_of(card)
+    lines = [datetime.now().strftime("%B-%d-%Y"), f"{status}:"] + list(src["header"])
+    study = item.get("study", "").strip()
+    if study:
+        lines.append(f"{study} Enrolling")
+    cohort = re.search(r"\b(Cohort\s+[\w-]+)\s+Dates\b", detail, re.I)
+    if cohort:
+        lines.append(cohort.group(1))
+    pays = money_values(card) or money_values(detail)
+    sched = next((l for l in cl if re.match(r"Participation in this study includes", l, re.I)), "")
+    sched = re.sub(r"^Participation in this study includes\s*", "", sched, flags=re.I).strip()
+    if pays:
+        pay = max(pays)
+        lines.append(f"${pay}")
+        f = extract(card)
+        days = f.get("nights", 0) + f.get("opv", 0)
+        if days:
+            lines.append(f"${pay / days:.2f} per day IP and OPV")
+    title = (item.get("title") or "").strip()
+    if title:
+        lines.append(title if title.endswith(".") else title + ".")
+    sex = next((l for l in cl if re.fullmatch(r"(?:Male/Female|Female|Male|Females?|Males?)", l, re.I)), "")
+    age = next((l for l in cl if re.match(r"Age\s+\d", l)), "")
+    if sex or age:
+        lines.append(f"{sex} {age}".strip())
+    bmi = re.search(r"\bBMI\s*:?\s*([^\n]*\d[^\n]*)", detail, re.I)
+    if bmi:
+        lines.append(f"bmi: {bmi.group(1).strip()}")
+    if sched:
+        lines.append(sched[0].upper() + sched[1:] if sched[0].isalpha() else sched)
+    if item.get("url"):
+        lines.append(item["url"])
+    return "\n".join(lines).strip()
+
+
 def build_post(src, status, item):
     if src["style"] == "celerion":
         return celerion_post(item)
+    if src["style"] == "icon":
+        return icon_post(src, status, item)
     card, detail = item.get("text") or "", item.get("detail") or ""
     brand = "Brand New" if status == "New" else "Reposted"
     head = [h.format(status=status, STATUS=status.upper(), brand=brand) for h in src["header"]]
