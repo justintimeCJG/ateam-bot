@@ -81,7 +81,7 @@ SOURCES = [
          title="td.views-field-title a", study_re=r"\n(\d{6,7}[^\n]*)\n", detail=True),
     dict(key="abbvie", header=["{status}: 800-827-2778", "Abbvie, NonVCT, Grayslake IL"], status_in_header=True,
          no_date=True, style="plain", list_urls=["https://abbviephase1.com/#/available-trials"],
-         mode="links", link_re=r"InputFiles/Files/.+\.pdf"),
+         mode="links", link_re=r"InputFiles/Files/.+\.pdf", detail="pdf"),
     dict(key="celerion", header=["{STATUS} CELERION STUDY:", "Online Registration (quickest):",
                                  "https://eregportal.helpresearch.com/PivotalUX/", "Phone: (866)445-7033."],
          status_in_header=True, style="celerion",
@@ -661,6 +661,38 @@ def fortrea_post(src, status, item):
     return "\n".join(lines)
 
 
+def abbvie_extra(text):
+    """Information sheet PDF -> check-out, screening pay, outpatient visits, phone calls.
+    The PDF text comes out with stray spaces ('No vember 2 026', '$ 26,15 0'), so it is read
+    with all spaces removed and then tidied."""
+    t = re.sub(r"\s+", "", text or "")
+    if not t:
+        return []
+
+    def tidy(seg):
+        seg = re.sub(r"(?i)(\d)(or|and|&)(?=\d)", r"\1 \2 ", seg)
+        seg = re.sub(r"(\d)([A-Za-z])", r"\1 \2", seg)
+        seg = re.sub(r"([A-Za-z])(\d)", r"\1 \2", seg)
+        seg = re.sub(r"(?i)\b(or|and)(?=[A-Z0-9])", r"\1 ", seg)
+        return re.sub(r",(?=\S)", ", ", seg).strip(" ,.;:")
+
+    stop = r"(?=upon|atscheduled|atthe|\(|CHECK|FOLLOW|OUT-?PATIENT|PHONE|RETURN|Please|$)"
+    lines = []
+    co = re.search(r"CHECKOUT:?(.+?)" + stop, t)
+    if co:
+        lines.append(f"Check-out: {tidy(co.group(1))}")
+    scr = re.search(r"Screening:\$([\d,]+(?:\.\d+)?)", t, re.I)
+    if scr:
+        amt = float(scr.group(1).replace(",", ""))
+        lines.append(f"Screening: ${amt:,.0f}" if amt == int(amt) else f"Screening: ${amt:,.2f}")
+    for label, rx in (("Outpatient visits", r"(?:FOLLOW-?UP|OUT-?PATIENT|RETURN)VISITS?(?:\(S\))?:?"),
+                      ("Phone calls", r"PHONECALLS?(?:\(S\))?:?")):
+        m = re.search(rx + r"(.+?)" + stop, t)        # headings are in capitals in the PDF
+        if m and re.search(r"\d", m.group(1)):
+            lines.append(f"{label}: {tidy(m.group(1))}")
+    return lines
+
+
 def build_post(src, status, item):
     """Build the post, then drop any line about referrals (never posted)."""
     text = _build_post(src, status, item)
@@ -668,6 +700,12 @@ def build_post(src, status, item):
 
 
 def _build_post(src, status, item):
+    if src["key"] == "abbvie":
+        base = _build_post(dict(src, key="abbvie_base"), status, dict(item, detail=""))
+        lines = base.split("\n")
+        extra = abbvie_extra(item.get("detail"))
+        at = len(lines) - 1 if lines and lines[-1].startswith("http") else len(lines)
+        return "\n".join(lines[:at] + extra + lines[at:])
     if src["style"] == "fortrea":
         return fortrea_post(src, status, item)
     if src["style"] == "parexel":
@@ -855,6 +893,9 @@ def pdf_text(url):
 
 async def fill_details(ctx, src, item):
     if not src.get("detail") or not item.get("url") or item.get("detail") is not None:
+        return item
+    if src["detail"] == "pdf":  # the study link is a PDF information sheet
+        item["detail"] = pdf_text(item["url"])
         return item
     page = await ctx.new_page()
     try:
