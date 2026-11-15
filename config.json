@@ -1,0 +1,7 @@
+{
+  "chat_id": -5579187334,
+  "check_every_minutes": 10,
+  "active_hours": [6, 19],
+  "seconds_between_posts": 3,
+  "closed_notices": true
+}
