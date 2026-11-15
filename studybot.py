@@ -54,12 +54,12 @@ if (DB.execute("SELECT v FROM meta WHERE k='schema'").fetchone() or [None])[0] !
 # --------------------------------------------------------------------------
 ICON = dict(mode="cards", card=".studies-card__inner", link="a.studies-card__inner-link",
             title=".studies-card__title", study=".studies-card__number-inner",
-            detail=True, detail_only=["bmi"], style="icon")
+            detail=True, detail_only=["bmi"], style="icon", calendars=True)
 SOURCES = [
     dict(ICON, key="icon_sa", header=["Icon VCT, San Antonio, TX", "(210)225-5437. Online appointment page is more efficient"],
          list_urls=["https://iconstudies.com/sanantonio/"]),
     dict(ICON, key="icon_lenexa", header=["Icon VCT, Lenexa, KS", "(913)410-2900"],
-         list_urls=["https://iconstudies.com/Lenexa/"], style="icon_ks", calendars=True),
+         list_urls=["https://iconstudies.com/Lenexa/"], style="icon_ks"),
     dict(ICON, key="icon_slc", header=["Icon VCT, Salt Lake City, UT", "(801)269-8200"],
          list_urls=["https://iconstudies.com/SLC/"]),
     dict(key="icon_sa_screenings", header=["Screenings Available", "Icon San Antonio"],
@@ -309,9 +309,9 @@ def icon_post(src, status, item):
     study = item.get("study", "").strip()
     if study:
         lines.append(f"{study} Enrolling")
-    cohort = re.search(r"\b(Cohort\s+[\w-]+)\s+Dates\b", detail, re.I)
-    if cohort:
-        lines.append(cohort.group(1))
+    cohorts = re.findall(r"\b(Cohort\s+[\w-]+)\s+(?:Dates|Calendar)\b", detail, re.I)
+    if cohorts:
+        lines.append(" & ".join(dict.fromkeys(cohorts)))
     pays = money_values(card) or money_values(detail)
     sched = next((l for l in cl if re.match(r"Participation in this study includes", l, re.I)), "")
     sched = re.sub(r"^Participation in this study includes\s*", "", sched, flags=re.I).strip()
@@ -332,6 +332,9 @@ def icon_post(src, status, item):
     bmi = re.search(r"\bBMI\s*:?\s*([^\n]*\d[^\n]*)", detail, re.I)
     if bmi:
         lines.append(f"bmi: {bmi.group(1).strip()}")
+    named = [(n, read_calendar(t)) for n, t in item.get("calendars") or [] if t]
+    named = [(re.sub(r"\s*(?:Dates|Calendar)\s*$", "", n, flags=re.I), c) for n, c in named if c["stays"] or c["opvs"]]
+    lines += calendar_lines([c for _, c in named], [n for n, _ in named])
     if sched:
         lines.append(sched[0].upper() + sched[1:] if sched[0].isalpha() else sched)
     if item.get("url"):
@@ -339,22 +342,31 @@ def icon_post(src, status, item):
     return "\n".join(lines).strip()
 
 
-CAL_DATE = r"\d{1,2}-[A-Z][a-z]{2}-\d{2,4}"
-CAL_LABEL = r"(?:Check[- ]?in|Check[- ]?out|Follow\s*-?\s*Up|Out-?patient|Return|EOS|Screening)"
+MONTHS = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?"
+CAL_DATE = (r"\d{1,2}-[A-Z][a-z]{2}-\d{2,4}"                       # 19-Nov-26
+            r"|" + MONTHS + r"\s+\d{1,2},?\s+\d{4}"                # December 14, 2026
+            r"|\d{1,2}/\d{1,2}/\d{2,4}")                            # 12/14/2026
+CAL_LABEL = (r"Check[- ]?in|Admit\w*|Admission|Check[- ]?out|Discharge\w*|Follow\s*-?\s*Up|"
+             r"Out-?patient|\bOP\b|Return|End of Study|EOS|Screening")
 
 
 def _cal_day(x):
     from datetime import datetime as dt
-    for fmt in ("%d-%b-%y", "%d-%b-%Y"):
+    x = re.sub(r"\s+", " ", x.replace(",", " ").replace(".", "")).strip()
+    for fmt in ("%d-%b-%y", "%d-%b-%Y", "%B %d %Y", "%b %d %Y", "%m/%d/%Y", "%m/%d/%y"):
         try:
             return dt.strptime(x, fmt)
         except ValueError:
             pass
+    if x.lower().startswith("sept"):
+        return _cal_day("Sep" + x[4:])
     return None
 
 
 def read_calendar(text):
-    """ICON calendar PDF text -> (group, stays [(in, out)], opvs [dates])."""
+    """ICON calendar PDF text -> group, stays [(in, out)] and outpatient dates.
+    Works for 'Check-in Day -1 19-Nov-26' tables (Lenexa) and
+    'Day -1 Admit Sunday, December 13, 2026' tables (San Antonio)."""
     toks = re.findall(f"({CAL_LABEL})|({CAL_DATE})", text, re.I)
     queue, rows = [], []
     for label, date in toks:
@@ -366,13 +378,13 @@ def read_calendar(text):
     for label, d in rows:
         if not d:
             continue
-        if label.startswith("check") and "in" in label.replace("check", ""):
+        if label.startswith(("admi", "check-in", "checkin", "check in")):
             cin = d
-        elif label.startswith("check"):
+        elif label.startswith(("check", "discharge")):
             if cin:
                 stays.append((cin, d))
                 cin = None
-        elif label.startswith(("follow", "out", "return")):
+        elif label.startswith(("follow", "out", "op", "return", "end of study")):
             opvs.append(d)
     if cin:
         stays.append((cin, cin))
@@ -384,6 +396,19 @@ def read_calendar(text):
     head = re.search(r"(\d{4}/\d{3,4})\s+(Part\s+[A-Z])?", text)
     return dict(group=group, stays=stays, opvs=opvs,
                 study=head.group(1) if head else "", part=(head.group(2) or "") if head else "")
+
+
+def calendar_lines(cals, names):
+    """In 🏡 block for each calendar: '11/19-25 with opvs:' / '11/27, 12/1, 4, & 11'."""
+    out = []
+    for c, name in zip(cals, names):
+        out.append("In \U0001f3e1:" if len(cals) == 1 else f"In \U0001f3e1 ({name}):")
+        spans = ", ".join(_span(a, b) for a, b in c["stays"])
+        if c["opvs"]:
+            out += [f"{spans} with opv{'s' if len(c['opvs']) > 1 else ''}:".strip(), _opv_list(c["opvs"])]
+        elif spans:
+            out.append(spans)
+    return out
 
 
 def _opv_list(dates):
@@ -427,13 +452,7 @@ def icon_ks_post(src, status, item):
         lines.append(f"Bmi: {nz(bmi.group(1))}-{nz(bmi.group(2))}")
     elif bmi_plus:
         lines.append(f"Bmi: {nz(bmi_plus.group(1).strip())}")
-    for c in cals:
-        lines.append("In \U0001f3e1:" if len(cals) == 1 else f"In \U0001f3e1 (G{c['group']}):")
-        spans = ", ".join(_span(a, b) for a, b in c["stays"])
-        if c["opvs"]:
-            lines += [f"{spans} with opv{'s' if len(c['opvs']) > 1 else ''}:".strip(), _opv_list(c["opvs"])]
-        elif spans:
-            lines.append(spans)
+    lines += calendar_lines(cals, [f"G{c['group']}" for c in cals])
     if not cals:
         sched = next((l for l in cl if re.match(r"Participation in this study includes", l, re.I)), "")
         if sched:
@@ -641,7 +660,7 @@ async def fill_details(ctx, src, item):
         item["detail"] = await (main.inner_text() if main else page.inner_text("body"))
         if src.get("calendars"):
             links = await page.eval_on_selector_all(
-                "a[href$='.pdf']", "els => els.filter(a => /calendar/i.test(a.innerText)).map(a => [a.innerText.trim(), a.href])")
+                "a[href$='.pdf']", "els => els.filter(a => /calendar|dates|cohort|group|schedule/i.test(a.innerText)).map(a => [a.innerText.trim(), a.href])")
             item["calendars"] = [(label, pdf_text(href)) for label, href in links]
     except Exception as e:
         print(f"  couldn't open {item['url']}: {e}")
