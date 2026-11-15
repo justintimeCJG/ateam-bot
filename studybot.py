@@ -69,16 +69,16 @@ SOURCES = [
     dict(key="parexel_bal", header=["(877)617-8839", "Parexel Baltimore"], style="parexel",
          list_urls=["https://pxlcrs.my.site.com/portal/s/trials-listing-bal?loc=BAL&language=en_US"],
          mode="text", start="find a suitable trial:", end="Get Started", split=r"\n\s*Learn More\s*\n",
-         key_re=r"\b(\d{6})\b", wait=8000),
+         key_re=r"\b(\d{6})\b", wait=8000, detail="click"),
     dict(key="parexel_la", header=["8882287425", "Parexel Glendale"], style="parexel",
          list_urls=["https://pxlcrs.my.site.com/portal/s/triallistla?loc=LA&language=en_US"],
          mode="text", start="find a suitable trial:", end="Get Started", split=r"\n\s*Learn More\s*\n",
-         key_re=r"\b(\d{6})\b", wait=8000),
+         key_re=r"\b(\d{6})\b", wait=8000, detail="click"),
     dict(key="fortrea", header=["Fortrea", "{status}: (866)429-3700"], status_in_header=True, style="plain",
          list_urls=[f"https://www.fortreaclinicaltrials.com/en-us/clinical-research/browse-studies?page={i}"
                     for i in range(4)],
          mode="cards", card="div.view-studies-us tbody tr", link="td.views-field-title a",
-         title="td.views-field-title a", study_re=r"\n(\d{6,7}[^\n]*)\n"),
+         title="td.views-field-title a", study_re=r"\n(\d{6,7}[^\n]*)\n", detail=True),
     dict(key="abbvie", header=["{status}: 800-827-2778", "Abbvie, NonVCT, Grayslake IL"], status_in_header=True,
          no_date=True, style="plain", list_urls=["https://abbviephase1.com/#/available-trials"],
          mode="links", link_re=r"InputFiles/Files/.+\.pdf"),
@@ -128,6 +128,27 @@ DATES = re.compile(r"(?:check[- ]?in|admission|inpatient|clinic stay|dates?|star
                    r"(?![A-Za-z ]+:)(?=[^\n$]*\d)[^\n$]{3,80}", re.I)
 SEX = re.compile(r"\b(males?\s*(?:and|&|/)\s*females?|men\s*(?:and|&)\s*women|females?\s+only|males?\s+only|"
                  r"healthy\s+(?:males?|females?|women|men)\b[^\n,.]{0,40}|male/female|postmenopausal\s+females?)", re.I)
+
+
+# Start/end dates, most specific first. Each returns the text after "Dates: ".
+DATE_RULES = [
+    (r"START DATE:\s*([A-Z][a-z]+ \d{1,2}, \d{4})[\s\S]{0,80}?END DATE:\s*([A-Z][a-z]+ \d{1,2}, \d{4})", "{} - {}"),
+    (r"\bDates\s*:?\s*\n*\s*([A-Z][a-z]{2} \d{1,2},? \d{4})\s*[-\u2013]\s*([A-Z][a-z]{2} \d{1,2},? \d{4})", "{} - {}"),
+    (r"Admissions?\s*:\s*([^\n]+)", "{}"),
+    (r"Trial Dates\s*\n+\s*([^\n]+)", "{}"),
+    (r"Clinic stay\s*\n*\s*([^\n]+)", "{}"),
+    (r"Check[- ]?In:?[ \t]*\n?[ \t]*([^\n]*\d[^\n]*?)\s*(?:\n|$)[\s\S]{0,40}?Check[- ]?Out\s*:?[ \t]*\n?[ \t]*([^\n]*\d[^\n]*)", "{} - {}"),
+    (r"Check[- ]?In:?[ \t]*\n?[ \t]*([^\n]*\d[^\n]*)", "Check-in {}"),
+    (r"\bDates?:\s*([^\n$]*\d[^\n$]*)", "{}"),
+]
+
+
+def find_dates(text):
+    for rx, fmt in DATE_RULES:
+        m = re.search(rx, text, re.I)
+        if m:
+            return re.sub(r"\s+", " ", fmt.format(*[g.strip(" ,") for g in m.groups()])).strip()
+    return None
 
 
 def money_values(text):
@@ -180,11 +201,9 @@ def extract(text):
         f["sex"] = m.group(0).strip()
     if m := STAYS.search(text):
         f["stays"] = m.group(0).strip(" •o-")
-    dm = [m for m in DATES.finditer(text)]
-    best = next((m for m in dm if re.match(r"(start date|check[- ]?in|admission|clinic stay)", m.group(0), re.I)),
-                dm[0] if dm else None)
-    if best:
-        f["dates"] = re.sub(r"\s*\n\s*", " ", best.group(0)).strip()
+    d = find_dates(text)
+    if d:
+        f["dates"] = d
     return f
 
 
@@ -225,7 +244,10 @@ def build_post(src, status, item):
         for k, v in d.items():
             if src.get("detail_only") and k not in src["detail_only"]:
                 continue
-            f.setdefault(k, v)
+            if k == "dates":
+                f[k] = v  # the study's own page has the fuller dates
+            else:
+                f.setdefault(k, v)
     pays = money_values(card) or money_values(detail)
     pay = max(pays) if pays else None
     up_to = bool(pay and re.search(r"up\s*(?:to|-to)[:\s]*\$", card + detail, re.I))
@@ -255,7 +277,7 @@ def build_post(src, status, item):
     if "stays" in f:
         lines.append(f["stays"])
     if "dates" in f and style != "icon":
-        lines.append(f["dates"])
+        lines.append(f"Dates: {f['dates']}")
     if url:
         lines.append(url)
     return "\n".join(lines).strip()
@@ -336,8 +358,8 @@ async def read_source(ctx, src, dump=False):
                 i = lo.find(src["start"].lower())
                 j = lo.find(src["end"].lower(), i + 1)
                 body = body[i + len(src["start"]) if i >= 0 else 0: j if j > 0 else None]
-                cards = [dict(text=b.strip(), href=list_url, title="", study="")
-                         for b in re.split(src["split"], body) if b.strip()]
+                cards = [dict(text=b.strip(), href=list_url, title="", study="", index=n_)
+                         for n_, b in enumerate(re.split(src["split"], body)) if b.strip()]
             before = len(found)
             for c in cards:
                 if src.get("exclude") and re.search(src["exclude"], c["text"], re.I):
@@ -353,7 +375,7 @@ async def read_source(ctx, src, dump=False):
                     m = re.search(src["study_re"], c["text"])
                     c["study"] = m.group(1).strip() if m else ""
                 found.setdefault(k, dict(text=c["text"], url=c["href"] or list_url,
-                                         title=c["title"], study=c["study"]))
+                                         title=c["title"], study=c["study"], index=c.get("index", 0)))
             if n > 0 and len(found) == before:  # past the last page
                 break
     finally:
@@ -366,6 +388,14 @@ async def fill_details(ctx, src, item):
         return item
     page = await ctx.new_page()
     try:
+        if src["detail"] == "click":  # study pages only open by clicking "Learn More"
+            await load(page, item["url"], src.get("wait", 2500))
+            await page.get_by_text("Learn More", exact=True).nth(item["index"]).click()
+            await page.wait_for_timeout(src.get("wait", 2500))
+            item["detail"] = await page.inner_text("body")
+            if "detail" in page.url.lower():
+                item["url"] = page.url
+            return item
         await load(page, item["url"])
         main = await page.query_selector("main, article, [role=main]")
         item["detail"] = await (main.inner_text() if main else page.inner_text("body"))
