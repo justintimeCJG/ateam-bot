@@ -471,7 +471,55 @@ def icon_ks_post(src, status, item):
     return "\n".join(lines)
 
 
+def parexel_post(src, status, item):
+    """Parexel style, e.g.
+    November-10-2026 / Reposted: / (877)617-8839 / Parexel Baltimore / 287970 / Healthy Volunteers (Prediabetic) /
+    $24,400 / $3485.71 per day IP and OPV / Admissions: ... Phone Calls: ... Follow ups: ... /
+    Ages 18-60 / BMI 35-50 / Population: ... This study involves up to: ... / link"""
+    card, detail = item.get("text") or "", item.get("detail") or ""
+    cl, dl = lines_of(card), lines_of(detail)
+    study = item.get("study", "")
+    lines = [datetime.now().strftime("%B-%d-%Y"), f"{status}:"] + list(src["header"])
+    if study:
+        lines.append(study)
+    title = next((l for l in cl if study not in l and not money_values(l)), "")
+    if title:
+        lines.append(title)
+    info_at = next((i for i, l in enumerate(cl) if re.match(r"Study Information", l, re.I)), len(cl))
+    info = [l for l in cl[info_at + 1:] if not re.fullmatch(r"Ages?\s*\d+\+?(?:\s*-\s*\d+)?", l, re.I)]
+    info_text = " ".join(info)
+    pays = money_values(card) or money_values(detail)
+    if pays:
+        pay = max(pays)
+        lines.append(fmt_money(pay))
+        # per day = pay / days spent in-house ("1 in-house stay of 4 days/3 nights")
+        stay_rx = _N + r"\s+in-?house\s+stays?\s+of\s+(?:up[- ]?to\s+)?(\d+)\s*-?\s*days?"
+        days = sum(_num(n) * int(d) for n, d in re.findall(stay_rx, info_text, re.I) or re.findall(stay_rx, detail, re.I))
+        if not days:
+            f = extract(card)
+            days = f.get("nights", 0) + f.get("opv", 0)
+        if days:
+            lines.append(f"${pay / days:.2f} per day IP and OPV")
+    sched = [l for l in dl if re.match(r"(Admissions?|Phone Calls?|Follow[- ]?ups?|Outpatients?(?: visits?)?|OPVs?|"
+                                        r"Check[- ]?ins?|Dates?)\s*:", l, re.I)]
+    if sched:
+        lines.append(" ".join(sched))
+    ages = re.search(r"\bAges\s*\n+\s*(\d[^\n]*)", detail) or re.search(r"\bAges?\s*(\d+\s*(?:-\s*\d+|\+))", card)
+    if ages:
+        lines.append(f"Ages {re.sub(chr(32), '', ages.group(1).strip())}")
+    bmi = re.search(r"\bBMI\s*:?\s*(\d[^\n]*)", detail)
+    if bmi:
+        lines.append(f"BMI {bmi.group(1).strip()}")
+    if info_text:
+        lines.append(info_text)
+    if item.get("url"):
+        lines.append(item["url"])
+    return "\n".join(lines).strip()
+
+
 def build_post(src, status, item):
+    if src["style"] == "parexel":
+        return parexel_post(src, status, item)
     if src["style"] == "icon_ks":
         return icon_ks_post(src, status, item)
     if src["style"] == "celerion":
