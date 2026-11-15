@@ -1,7 +1,11 @@
 {
-  "chat_id": -5579187334,
+  "chat_id": -1004463361359,
   "check_every_minutes": 10,
-  "active_hours": [6, 19],
+  "active_hours": [
+    6,
+    19
+  ],
   "seconds_between_posts": 3,
-  "closed_notices": true
+  "closed_notices": true,
+  "bot_token": "8235121166:AAF62DNOQM8sEQdQyHPjNZ3tKVd0DyoObm8"
 }
