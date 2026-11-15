@@ -92,7 +92,7 @@ SOURCES = [
          include=r"No major health conditions|Non-childbearing potential|Healthy (?:volunteers|adults|men|women)",
          style="trialmed", list_urls=[f"https://trialmed.com/find-a-study/?paged={i}" for i in range(1, 7)],
          mode="cards", card="div.wp-study-card", link="a.wp-study-card-title", title="a.wp-study-card-title",
-         detail=True),
+         study="div.wp-study-card-study-id", detail=True),
     dict(key="alta_kc", header=["{status}", "Altasciences KS (913)213-2970", "", "Altasciences", "VCT and RSVP",
                                 "Overland Park, KS"], status_in_header=True, no_date=True, style="plain",
          list_urls=["https://participantskc.altasciences.com/available-studies"],
@@ -761,10 +761,10 @@ def trialmed_post(src, status, item):
     card, detail = item.get("text") or "", item.get("detail") or ""
     cl = lines_of(card)
     lines = [h.replace("{STATUS}", status.upper()).replace("{status}", status) for h in src["header"]]
-    num = re.match(r"\s*(\S+)\s+(.*)", cl[0]) if cl else None
+    st = (item.get("study") or "").split()                      # hidden card field: '3147540 AUS'
     loc = re.search(r"Location\s*\n+\s*([^\n]+)", detail)
-    study = num.group(1) if num else item.get("study", "")
-    place = loc.group(1).strip() if loc else (num.group(2) if num else "")
+    study = st[0] if st else ""
+    place = loc.group(1).strip() if loc else (cl[0] if cl else "")
     lines.append(f"Study #{study}" + (f" - {place}" if place else ""))
     comp = re.search(r"Compensation\s*\n+\s*([^\n]+)", detail)
     pays = money_values(card) or money_values(detail)
