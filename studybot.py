@@ -59,7 +59,7 @@ SOURCES = [
     dict(ICON, key="icon_sa", header=["Icon VCT, San Antonio, TX", "(210)225-5437. Online appointment page is more efficient"],
          list_urls=["https://iconstudies.com/sanantonio/"]),
     dict(ICON, key="icon_lenexa", header=["Icon VCT, Lenexa, KS", "(913)410-2900"],
-         list_urls=["https://iconstudies.com/Lenexa/"]),
+         list_urls=["https://iconstudies.com/Lenexa/"], style="icon_ks", calendars=True),
     dict(ICON, key="icon_slc", header=["Icon VCT, Salt Lake City, UT", "(801)269-8200"],
          list_urls=["https://iconstudies.com/SLC/"]),
     dict(key="icon_sa_screenings", header=["Screenings Available", "Icon San Antonio"],
@@ -339,7 +339,111 @@ def icon_post(src, status, item):
     return "\n".join(lines).strip()
 
 
+CAL_DATE = r"\d{1,2}-[A-Z][a-z]{2}-\d{2,4}"
+CAL_LABEL = r"(?:Check[- ]?in|Check[- ]?out|Follow\s*-?\s*Up|Out-?patient|Return|EOS|Screening)"
+
+
+def _cal_day(x):
+    from datetime import datetime as dt
+    for fmt in ("%d-%b-%y", "%d-%b-%Y"):
+        try:
+            return dt.strptime(x, fmt)
+        except ValueError:
+            pass
+    return None
+
+
+def read_calendar(text):
+    """ICON calendar PDF text -> (group, stays [(in, out)], opvs [dates])."""
+    toks = re.findall(f"({CAL_LABEL})|({CAL_DATE})", text, re.I)
+    queue, rows = [], []
+    for label, date in toks:
+        if label:
+            queue.append(label.lower())
+        elif queue:
+            rows.append((queue.pop(0), _cal_day(date)))
+    stays, opvs, cin = [], [], None
+    for label, d in rows:
+        if not d:
+            continue
+        if label.startswith("check") and "in" in label.replace("check", ""):
+            cin = d
+        elif label.startswith("check"):
+            if cin:
+                stays.append((cin, d))
+                cin = None
+        elif label.startswith(("follow", "out", "return")):
+            opvs.append(d)
+    if cin:
+        stays.append((cin, cin))
+    g = re.search(r"Group\s+([A-Za-z]?\d+[A-Za-z]?)", text)
+    part = re.search(r"\bPart\s+([A-Z])\b", text)
+    group = g.group(1) if g else ""
+    if part and group[:1].upper() == part.group(1):
+        group = group[1:]
+    head = re.search(r"(\d{4}/\d{3,4})\s+(Part\s+[A-Z])?", text)
+    return dict(group=group, stays=stays, opvs=opvs,
+                study=head.group(1) if head else "", part=(head.group(2) or "") if head else "")
+
+
+def _opv_list(dates):
+    out, last = [], None
+    for d in sorted(dates):
+        out.append(_md(d) if d.month != last else str(d.day))
+        last = d.month
+    if len(out) > 2:
+        out[-1] = "& " + out[-1]
+        return ", ".join(out)
+    return " & ".join(out)
+
+
+def icon_ks_post(src, status, item):
+    """ICON Lenexa style, e.g.
+    $10,500 ICON Lenexa / Study #0009/1171 Part A G4 / RE-RELEASED / M/F (all) / Age: 18-55 /
+    Bmi: 27-34.9 / In 🏡: / 11/19-25 with opvs: / 11/27, 12/1, 4, 11, 18, & 29"""
+    card, detail = item.get("text") or "", item.get("detail") or ""
+    cl = lines_of(card)
+    pays = money_values(card) or money_values(detail)
+    cals = [read_calendar(t) for _, t in item.get("calendars") or [] if t]
+    cals = [c for c in cals if c["stays"] or c["opvs"]]
+    lines = [f"{fmt_money(max(pays)) if pays else ''} ICON Lenexa".strip()]
+    if cals:
+        c0 = cals[0]
+        groups = " & ".join(f"G{c['group']}" for c in cals if c["group"])
+        lines.append(" ".join(x for x in ["Study #" + (c0["study"] or item.get("study", "")), c0["part"], groups] if x))
+    elif item.get("study"):
+        lines.append(f"Study #{item['study'].strip()}")
+    lines.append("RE-RELEASED" if status == "Reposted" else "NEW")
+    sex = next((l for l in cl if re.fullmatch(r"Male/Female|Females?|Males?", l, re.I)), "").lower()
+    if sex:
+        lines.append("M/F (all)" if "/" in sex else ("F" if sex.startswith("f") else "M"))
+    age = re.search(r"Age\s+(\d+)\s*-\s*(\d+)", card)
+    if age:
+        lines.append(f"Age: {age.group(1)}-{age.group(2)}")
+    nz = lambda x: re.sub(r"\.0\b", "", x)
+    bmi = re.search(r"\bBMI\s*:?\s*([\d.]+)\s*(?:-|\u2013|to)\s*([\d.]+)", detail, re.I)
+    bmi_plus = re.search(r"\bBMI\s*:?\s*([^\n]*\d[^\n]*)", detail, re.I)
+    if bmi:
+        lines.append(f"Bmi: {nz(bmi.group(1))}-{nz(bmi.group(2))}")
+    elif bmi_plus:
+        lines.append(f"Bmi: {nz(bmi_plus.group(1).strip())}")
+    for c in cals:
+        lines.append("In \U0001f3e1:" if len(cals) == 1 else f"In \U0001f3e1 (G{c['group']}):")
+        spans = ", ".join(_span(a, b) for a, b in c["stays"])
+        if c["opvs"]:
+            lines += [f"{spans} with opv{'s' if len(c['opvs']) > 1 else ''}:".strip(), _opv_list(c["opvs"])]
+        elif spans:
+            lines.append(spans)
+    if not cals:
+        sched = next((l for l in cl if re.match(r"Participation in this study includes", l, re.I)), "")
+        if sched:
+            lines.append(re.sub(r"^Participation in this study includes\s*", "", sched, flags=re.I))
+    return "\n".join(lines)
+
+
 def build_post(src, status, item):
+    if src["style"] == "icon_ks":
+        return icon_ks_post(src, status, item)
     if src["style"] == "celerion":
         return celerion_post(item)
     if src["style"] == "icon":
@@ -507,6 +611,18 @@ async def read_source(ctx, src, dump=False):
     return found
 
 
+def pdf_text(url):
+    try:
+        from io import BytesIO
+        from pypdf import PdfReader
+        r = requests.get(url, timeout=30)
+        r.raise_for_status()
+        return "\n".join(p.extract_text() or "" for p in PdfReader(BytesIO(r.content)).pages)
+    except Exception as e:
+        print(f"  couldn't read calendar {url}: {e}")
+        return ""
+
+
 async def fill_details(ctx, src, item):
     if not src.get("detail") or not item.get("url") or item.get("detail") is not None:
         return item
@@ -523,6 +639,10 @@ async def fill_details(ctx, src, item):
         await load(page, item["url"])
         main = await page.query_selector("main, article, [role=main]")
         item["detail"] = await (main.inner_text() if main else page.inner_text("body"))
+        if src.get("calendars"):
+            links = await page.eval_on_selector_all(
+                "a[href$='.pdf']", "els => els.filter(a => /calendar/i.test(a.innerText)).map(a => [a.innerText.trim(), a.href])")
+            item["calendars"] = [(label, pdf_text(href)) for label, href in links]
     except Exception as e:
         print(f"  couldn't open {item['url']}: {e}")
         item["detail"] = ""
