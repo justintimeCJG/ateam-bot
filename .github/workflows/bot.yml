@@ -51,8 +51,9 @@ jobs:
           import asyncio, os, time
           import studybot as sb
           from playwright.async_api import async_playwright
-          picks = ["icon_sa", "celerion", "fortrea", "parexel_bal", "drvince", "trialmed",
-                   "alta_kc", "abbvie", "medpace", "alta_la", "icon_sa_screenings"]
+          picks = ["icon_sa", "icon_lenexa", "icon_slc", "icon_sa_screenings",
+                   "parexel_bal", "parexel_la", "fortrea", "abbvie", "celerion",
+                   "trialmed", "alta_kc", "alta_la", "medpace", "drvince", "frontage"]
           n = int(os.environ["TEST_POSTS"])
           async def main():
               async with async_playwright() as p:
