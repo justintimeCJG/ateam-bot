@@ -72,7 +72,7 @@ jobs:
                       key, _, want = key.partition(":")   # e.g. fortrea:Madison = a Madison study
                       src = next(s for s in sb.SOURCES if s["key"] == key)
                       cur = await sb.read_source(ctx, src)
-                      items = [v for v in cur.values() if want.lower() in (v.get("text") or "").lower()]
+                      items = [v for v in cur.values() if want.lower() in " ".join([v.get("text") or "", v.get("study") or "", v.get("url") or ""]).lower()]
                       items.sort(key=lambda v: not re.search(r"[A-Z][a-z]{2} \d{1,2} \d{4}", v.get("text") or ""))
                       if not items:
                           print(key, want, "no studies listed")
