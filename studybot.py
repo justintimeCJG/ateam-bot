@@ -374,6 +374,17 @@ def read_calendar(text):
             queue.append(label.lower())
         elif queue:
             rows.append((queue.pop(0), _cal_day(date)))
+    # calendars sometimes carry the wrong year on a later date (e.g. 5-Jan-26 after
+    # 29-Dec-26): keep the visits in calendar order by moving such dates forward a year
+    from datetime import timedelta
+    prev = None
+    for i, (label, d) in enumerate(rows):
+        if d and prev:
+            while d < prev - timedelta(days=60):
+                d = d.replace(year=d.year + 1)
+            rows[i] = (label, d)
+        if d and not label.startswith(("eos", "screening")):
+            prev = d
     stays, opvs, cin = [], [], None
     for label, d in rows:
         if not d:
