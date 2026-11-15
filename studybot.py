@@ -34,6 +34,34 @@ CONFIG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
 import os
 if os.environ.get("TELEGRAM_BOT_TOKEN"):
     CONFIG["bot_token"] = os.environ["TELEGRAM_BOT_TOKEN"]
+
+# Oracle server only: its Ubuntu image is missing system libraries that
+# Playwright/Chromium need, and the bot has no admin rights, so the bot
+# downloads those packages itself and unpacks them into libroot/.
+SERVER_SETUP = r"""
+set -x
+mkdir -p debs libroot
+cd debs
+apt-get download libatomic1
+for f in *.deb; do dpkg -x "$f" ../libroot; done
+cd ..
+PKGS=$(venv/bin/python -m playwright install-deps --dry-run chromium 2>&1 \
+  | grep -o 'no-install-recommends.*' | sed 's/no-install-recommends//; s/["\\]//g')
+echo "deps: $PKGS"
+cd debs
+for p in $PKGS; do dpkg -s "$p" >/dev/null 2>&1 || apt-get download "$p"; done
+for f in *.deb; do dpkg -x "$f" ../libroot; done
+cd ..
+venv/bin/python -m playwright install chromium && touch libroot/.ok
+"""
+if HERE.resolve().as_posix() == "/opt/studybot":
+    import subprocess
+    _lib = HERE / "libroot"
+    os.environ["LD_LIBRARY_PATH"] = ":".join(
+        [str(_lib / "usr/lib/aarch64-linux-gnu"), str(_lib / "lib/aarch64-linux-gnu"),
+         str(_lib / "usr/lib")] + [p for p in [os.environ.get("LD_LIBRARY_PATH")] if p])
+    if not (_lib / ".ok").exists():
+        subprocess.run(["bash", "-c", SERVER_SETUP], cwd=HERE)
 DB = sqlite3.connect(HERE / "studybot.db")
 DB.execute("""CREATE TABLE IF NOT EXISTS items(
     source TEXT, key TEXT, present INTEGER, missing INTEGER, sig TEXT,
