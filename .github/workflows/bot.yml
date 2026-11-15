@@ -10,6 +10,9 @@ on:
       test_posts:
         description: "Test: post this many sample studies (one per site) instead of a normal check. 0 = normal run"
         default: "0"
+      sources:
+        description: "Test: only these sources, comma-separated keys (blank = all)"
+        default: ""
 
 permissions:
   contents: write             # so the bot can save what it has already posted
@@ -26,6 +29,7 @@ jobs:
       TZ: America/Chicago
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TEST_POSTS: ${{ github.event.inputs.test_posts || '0' }}
+      TEST_SOURCES: ${{ github.event.inputs.sources || '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -54,6 +58,9 @@ jobs:
           picks = ["icon_sa", "icon_lenexa", "icon_slc", "icon_sa_screenings",
                    "parexel_bal", "parexel_la", "fortrea", "abbvie", "celerion",
                    "trialmed", "alta_kc", "alta_la", "medpace", "drvince", "frontage"]
+          only = [k.strip() for k in os.environ.get("TEST_SOURCES", "").split(",") if k.strip()]
+          if only:
+              picks = only
           n = int(os.environ["TEST_POSTS"])
           async def main():
               async with async_playwright() as p:
