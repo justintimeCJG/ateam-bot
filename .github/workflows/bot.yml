@@ -52,7 +52,7 @@ jobs:
         if: env.TEST_POSTS != '0'
         run: |
           python - <<'PY'
-          import asyncio, os, time
+          import asyncio, os, re, time
           import studybot as sb
           from playwright.async_api import async_playwright
           picks = ["icon_sa", "icon_lenexa", "icon_slc", "icon_sa_screenings",
@@ -69,15 +69,18 @@ jobs:
                   for key in picks:
                       if sent >= n:
                           break
+                      key, _, want = key.partition(":")   # e.g. fortrea:Madison = a Madison study
                       src = next(s for s in sb.SOURCES if s["key"] == key)
                       cur = await sb.read_source(ctx, src)
-                      if not cur:
-                          print(key, "no studies listed")
+                      items = [v for v in cur.values() if want.lower() in (v.get("text") or "").lower()]
+                      items.sort(key=lambda v: not re.search(r"[A-Z][a-z]{2} \d{1,2} \d{4}", v.get("text") or ""))
+                      if not items:
+                          print(key, want, "no studies listed")
                           continue
-                      item = next(iter(cur.values()))
+                      item = items[0]
                       await sb.fill_details(ctx, src, item)
                       msg = sb.build_post(src, "New", item)
-                      print("----- " + key + "\n" + msg)
+                      print("----- " + key + " " + want + "\n" + msg)
                       ok = sb.send(msg)
                       print(key, "posted" if ok else "FAILED")
                       sent += ok
