@@ -442,7 +442,7 @@ def icon_ks_post(src, status, item):
     pays = money_values(card) or money_values(detail)
     cals = [read_calendar(t) for _, t in item.get("calendars") or [] if t]
     cals = [c for c in cals if c["stays"] or c["opvs"]]
-    lines = [f"{fmt_money(max(pays)) if pays else ''} ICON Lenexa".strip()]
+    lines = [f"{fmt_money(max(pays)) if pays else ''} ICON Lenexa".strip(), "(913)410-2900"]
     if cals:
         c0 = cals[0]
         groups = " & ".join(f"G{c['group']}" for c in cals if c["group"])
