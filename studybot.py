@@ -808,6 +808,14 @@ def build_post(src, status, item):
 
 
 def _build_post(src, status, item):
+    if src["key"] == "drvince":
+        # the site lists counts only (no dates): add the outpatient-visit and phone-call lines
+        lines = _build_post(dict(src, key="drvince_base"), status, item).split("\n")
+        extra = [l for l in lines_of(item.get("text"))
+                 if re.match(r"\d+\s+(?:Outpatient visits?|Phone calls?|Follow[- ]?up visits?)\b", l, re.I)]
+        at = next((i + 1 for i, l in enumerate(lines) if re.match(r"\d+\s+Stays?\b", l, re.I)),
+                  next((i for i, l in enumerate(lines) if l.startswith("Dates:")), len(lines)))
+        return "\n".join(lines[:at] + extra + lines[at:])
     if src["style"] == "trialmed":
         return trialmed_post(src, status, item)
     if src["key"] == "abbvie":
