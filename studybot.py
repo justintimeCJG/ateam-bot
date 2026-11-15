@@ -84,7 +84,7 @@ SOURCES = [
          mode="links", link_re=r"InputFiles/Files/.+\.pdf"),
     dict(key="celerion", header=["{STATUS} CELERION STUDY:", "Online Registration (quickest):",
                                  "https://eregportal.helpresearch.com/PivotalUX/", "Phone: (866)445-7033."],
-         status_in_header=True, style="plain",
+         status_in_header=True, style="celerion",
          list_urls=[f"https://helpresearch.com/studies?page={i}" for i in range(4)],
          mode="cards", card="div.inner-container", link="a.study-page-link", detail=True,
          study_re=r"\b(C[A-Z]\d{5}-\w+)", skip_re=r"^starts in"),
@@ -219,7 +219,86 @@ def fmt_money(v):
 # --------------------------------------------------------------------------
 # Building posts
 # --------------------------------------------------------------------------
+def _md(d):
+    return f"{d.month}/{d.day}"
+
+
+def _span(a, b):
+    """11/18-21, or 11/30-12/3 when the month changes."""
+    if (a.month, a.day) == (b.month, b.day):
+        return _md(a)
+    return f"{_md(a)}-{b.day}" if a.month == b.month else f"{_md(a)}-{_md(b)}"
+
+
+def _date_runs(dates):
+    """[11/13, 11/16, 11/17] -> '11/13 & 16-17'"""
+    from datetime import timedelta
+    dates = sorted(set(dates))
+    runs, out, last_month = [], [], None
+    for d in dates:
+        if runs and d - runs[-1][-1] == timedelta(days=1):
+            runs[-1].append(d)
+        else:
+            runs.append([d])
+    for r in runs:
+        a, b = r[0], r[-1]
+        first = _md(a) if a.month != last_month else str(a.day)
+        out.append(first + (f"-{b.day}" if b != a and b.month == a.month else (f"-{_md(b)}" if b != a else "")))
+        last_month = b.month
+    return " & ".join(out)
+
+
+def celerion_post(item):
+    from datetime import datetime as dt
+    card, detail = item.get("text") or "", item.get("detail") or ""
+    g = lambda rx, t=detail: (re.search(rx, t, re.I | re.M) or [None, None])[1]
+    pays = money_values(card) or money_values(detail)
+    rows = [l.split("\t") for l in detail.splitlines() if l.count("\t") >= 5]
+    def day(x):
+        try:
+            return dt.strptime(x.strip().split()[0], "%m/%d/%Y")
+        except Exception:
+            return None
+    stays = [r for r in rows if r[0].strip().lower().startswith("check-in")]
+    returns = [r for r in rows if r[0].strip().lower() == "return"]
+    site = (stays[0][-1].strip() if stays else None) or next(
+        (l for l in lines_of(card) if l in ("Lincoln", "Phoenix", "Belfast")), "")
+    study = g(r"STUDY NUMBER:\s*(\S+)")
+    group = g(r"GROUP NUMBER:\s*(\S+)")
+    name = g(r"REFER A FRIEND\s*\n\s*([^\n*]+)") or (lines_of(card) or [""])[-1]
+    who = (g(r"^\s*([A-Z][A-Z &,'-]*(?:MALES?|FEMALES?)[A-Z &,'-]*)\s*$") or
+           next((l for l in lines_of(card) if re.search(r"males?|females?", l, re.I)), "")).lower()
+    sex = "M/F" if ("male" in who.replace("female", "") and "female" in who) else (
+        "F" if "female" in who else ("M" if "male" in who else ""))
+    if re.search(r"non-?child|post-?menopaus|sterile", who):
+        sex += " (pm/ss)"
+    age = g(r"AGE:\s*(\d+\s*-\s*\d+)")
+    bmi = g(r"BMI:\s*([\d.]+\s*-\s*[\d.]+)")
+    lines = [f"{fmt_money(max(pays)) if pays else ''} Celerion {site}".strip()]
+    if study:
+        lines.append(f"Study #{study}" + (f" G{group}" if group else ""))
+    if name:
+        lines.append(f"Study name: {name.strip()}")
+    if sex:
+        lines.append(sex)
+    if age:
+        lines.append(f"Age: {re.sub(r'\s+', '', age)}")
+    if bmi:
+        lines.append(f"Bmi: {re.sub(r'\s+', '', bmi)}")
+    spans = [_span(day(r[2]), day(r[4])) for r in stays if day(r[2]) and day(r[4])]
+    if spans:
+        opv = [_md(day(r[2])) for r in returns if day(r[2])]
+        lines += ["In \U0001f3e1:", ", ".join(spans) + (f" with opv: {', '.join(opv)}" if opv else "")]
+    m = re.search(r"SCREENING DATES:([\s\S]*?)(?:DOCTOR EXAM|STUDY DATES|$)", detail)
+    screen = [d for d in (day(x) for x in re.findall(r"\d{1,2}/\d{1,2}/\d{4}", m.group(1) if m else "")) if d]
+    if screen:
+        lines += ["Screening \U0001f5d3\ufe0f:", _date_runs(screen)]
+    return "\n".join(lines)
+
+
 def build_post(src, status, item):
+    if src["style"] == "celerion":
+        return celerion_post(item)
     card, detail = item.get("text") or "", item.get("detail") or ""
     brand = "Brand New" if status == "New" else "Reposted"
     head = [h.format(status=status, STATUS=status.upper(), brand=brand) for h in src["header"]]
