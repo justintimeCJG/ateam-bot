@@ -553,10 +553,11 @@ def read_fortrea_dates(detail, start=None):
 
     def add(d):
         nonlocal last
-        if last and d < last - timedelta(days=60):
+        bucket = {"check-in": "cin", "check-out": "cout", "follow": "opv", "out": "opv"}.get(key, "calls")
+        prev = cur[bucket][-1] if cur[bucket] else last    # calls are listed separately, so compare
+        if prev and d < prev - timedelta(days=60):         # within the same kind of visit
             d = d.replace(year=d.year + 1)
         last = d
-        bucket = {"check-in": "cin", "check-out": "cout", "follow": "opv", "out": "opv"}.get(key, "calls")
         cur[bucket].append(d)
 
     for m in re.finditer(FT_KEY + "|" + FT_GROUP + "|" + FT_DATE, text, re.I):
