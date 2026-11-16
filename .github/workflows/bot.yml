@@ -1,10 +1,8 @@
 name: A Team Bot
 
 on:
-  schedule:
-    # every 10 minutes, about 6am-7pm Central (times below are UTC; the bot
-    # itself skips anything outside 6am-7pm Central)
-    - cron: "4-59/10 0,11-23 * * *"
+  # The regular 10-minute checks now run on the Oracle Cloud server.
+  # This workflow only runs when started by hand (tests).
   workflow_dispatch:          # lets you press "Run workflow" by hand
     inputs:
       test_posts:
