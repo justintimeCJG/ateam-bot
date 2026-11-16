@@ -290,6 +290,8 @@ def celerion_post(item):
             return dt.strptime(x.strip().split()[0], "%m/%d/%Y")
         except Exception:
             return None
+    # the page can list the same schedule table twice: keep each row once
+    rows = list({tuple(c.strip() for c in r): r for r in rows}.values())
     stays = [r for r in rows if r[0].strip().lower().startswith("check-in")]
     returns = [r for r in rows if r[0].strip().lower() == "return"]
     site = (stays[0][-1].strip() if stays else None) or next(
@@ -319,9 +321,10 @@ def celerion_post(item):
     spans = [_span(day(r[2]), day(r[4])) for r in stays if day(r[2]) and day(r[4])]
     if spans:
         opv = [_md(day(r[2])) for r in returns if day(r[2])]
+        spans, opv = list(dict.fromkeys(spans)), list(dict.fromkeys(opv))
         lines += ["In \U0001f3e1:", ", ".join(spans) + (f" with opv: {', '.join(opv)}" if opv else "")]
     m = re.search(r"SCREENING DATES:([\s\S]*?)(?:DOCTOR EXAM|STUDY DATES|$)", detail)
-    screen = [d for d in (day(x) for x in re.findall(r"\d{1,2}/\d{1,2}/\d{4}", m.group(1) if m else "")) if d]
+    screen = sorted(set(d for d in (day(x) for x in re.findall(r"\d{1,2}/\d{1,2}/\d{4}", m.group(1) if m else "")) if d))
     if screen:
         lines += ["Screening \U0001f5d3\ufe0f:", _date_runs(screen)]
     return "\n".join(lines)
@@ -849,7 +852,12 @@ def frontage_body(detail):
 def build_post(src, status, item):
     """Build the post, then drop any line about referrals (never posted)."""
     text = _build_post(src, status, item)
-    return "\n".join(l for l in text.split("\n") if not re.search(r"\brefer", l, re.I)).strip()
+    text = "\n".join(l for l in text.split("\n") if not re.search(r"\brefer", l, re.I)).strip()
+    # every post ends with a link to the study's own page
+    url = (item.get("url") or "").strip()
+    if url.startswith("http") and url not in text:
+        text += "\n" + url
+    return text
 
 
 def _build_post(src, status, item):
