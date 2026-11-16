@@ -42,17 +42,16 @@ SERVER_SETUP = r"""
 set -x
 mkdir -p debs libroot
 cd debs
-apt-get download libatomic1
+PKGS="libatomic1 libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 libatspi2.0-0t64
+ libcairo2 libcups2t64 libdbus-1-3 libdrm2 libgbm1 libglib2.0-0t64 libnspr4 libnss3
+ libpango-1.0-0 libx11-6 libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3
+ libxkbcommon0 libxrandr2 libfontconfig1 libfreetype6 fonts-liberation"
+ALL=$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts \
+  --no-breaks --no-replaces --no-enhances $PKGS 2>/dev/null | grep '^[a-z0-9]' | sort -u)
+for p in $ALL; do dpkg -s "$p" >/dev/null 2>&1 || apt-get download "$p"; done
 for f in *.deb; do dpkg -x "$f" ../libroot; done
 cd ..
-PKGS=$(venv/bin/python -m playwright install-deps --dry-run chromium 2>&1 \
-  | grep -o 'no-install-recommends.*' | sed 's/no-install-recommends//; s/["\\]//g')
-echo "deps: $PKGS"
-cd debs
-for p in $PKGS; do dpkg -s "$p" >/dev/null 2>&1 || apt-get download "$p"; done
-for f in *.deb; do dpkg -x "$f" ../libroot; done
-cd ..
-venv/bin/python -m playwright install chromium && touch libroot/.ok
+venv/bin/python -m playwright install chromium && touch libroot/.ok2
 """
 if HERE.resolve().as_posix() == "/opt/studybot":
     import subprocess
@@ -60,7 +59,7 @@ if HERE.resolve().as_posix() == "/opt/studybot":
     os.environ["LD_LIBRARY_PATH"] = ":".join(
         [str(_lib / "usr/lib/aarch64-linux-gnu"), str(_lib / "lib/aarch64-linux-gnu"),
          str(_lib / "usr/lib")] + [p for p in [os.environ.get("LD_LIBRARY_PATH")] if p])
-    if not (_lib / ".ok").exists():
+    if not (_lib / ".ok2").exists():
         subprocess.run(["bash", "-c", SERVER_SETUP], cwd=HERE)
 DB = sqlite3.connect(HERE / "studybot.db")
 DB.execute("""CREATE TABLE IF NOT EXISTS items(
