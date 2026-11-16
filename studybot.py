@@ -1004,6 +1004,15 @@ async def load(page, url, wait=2500):
     await page.wait_for_timeout(wait)
 
 
+def fresh(url):
+    """Add a throwaway value to the address so a site's cache (Trialmed's keeps
+    pages for up to 10 minutes) always hands over the current list."""
+    if not CONFIG.get("skip_cache", True):
+        return url
+    base, hash_, frag = url.partition("#")
+    return f"{base}{'&' if '?' in base else '?'}_={int(time.time())}{hash_}{frag}"
+
+
 def make_key(src, c):
     if src.get("key_re"):
         m = re.search(src["key_re"], c["text"])
@@ -1019,10 +1028,10 @@ def make_key(src, c):
 async def read_source(ctx, src, dump=False):
     """Return {key: item} for every study this source currently lists."""
     page = await ctx.new_page()
-    found = {}
+    found, raw = {}, set()
     try:
         for n, list_url in enumerate(src["list_urls"]):
-            await load(page, list_url, src.get("wait", 2500))
+            await load(page, fresh(list_url), src.get("wait", 2500))
             if dump:
                 d = HERE / "dumps"
                 d.mkdir(exist_ok=True)
@@ -1045,7 +1054,8 @@ async def read_source(ctx, src, dump=False):
                 body = body[i + len(src["start"]) if i >= 0 else 0: j if j > 0 else None]
                 cards = [dict(text=b.strip(), href=list_url, title="", study="", index=n_)
                          for n_, b in enumerate(re.split(src["split"], body)) if b.strip()]
-            before = len(found)
+            seen_raw = len(raw)
+            raw.update(c.get("href") or c.get("text") for c in cards)
             for c in cards:
                 if src.get("exclude") and re.search(src["exclude"], c["text"], re.I):
                     continue
@@ -1063,7 +1073,8 @@ async def read_source(ctx, src, dump=False):
                     c["study"] = m.group(1).strip() if m else ""
                 found.setdefault(k, dict(text=c["text"], url=c["href"] or list_url,
                                          title=c["title"], study=c["study"], index=c.get("index", 0)))
-            if n > 0 and len(found) == before:  # past the last page
+            # past the last page (count every card, even ones filtered out above)
+            if n > 0 and len(raw) == seen_raw:
                 break
     finally:
         await page.close()
