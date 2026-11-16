@@ -53,8 +53,10 @@ for f in *.deb; do dpkg -x "$f" ../libroot; done
 cd ..
 venv/bin/python -m playwright install chromium && touch libroot/.ok2
 """
-if HERE.resolve().as_posix() == "/opt/studybot":
+SERVER = HERE.resolve().as_posix() == "/opt/studybot"
+if SERVER:
     import subprocess
+    sys.stdout.reconfigure(line_buffering=True)  # log lines show up right away
     _lib = HERE / "libroot"
     os.environ["LD_LIBRARY_PATH"] = ":".join(
         [str(_lib / "usr/lib/aarch64-linux-gnu"), str(_lib / "lib/aarch64-linux-gnu"),
@@ -68,7 +70,6 @@ if HERE.resolve().as_posix() == "/opt/studybot":
 <dir>{_lib}/usr/share/fonts</dir><cachedir>{HERE}/fontcache</cachedir></fontconfig>
 """)
     os.environ["FONTCONFIG_FILE"] = str(_fc)
-    os.environ.setdefault("DEBUG", "pw:browser")  # browser errors go to the server log
 DB = sqlite3.connect(HERE / "studybot.db")
 DB.execute("""CREATE TABLE IF NOT EXISTS items(
     source TEXT, key TEXT, present INTEGER, missing INTEGER, sig TEXT,
@@ -1026,11 +1027,17 @@ async def read_source(ctx, src, dump=False):
                 d = HERE / "dumps"
                 d.mkdir(exist_ok=True)
                 (d / f"{src['key']}_{n}.txt").write_text(await page.inner_text("body"), encoding="utf-8")
-            if src["mode"] == "cards":
-                cards = await page.evaluate(CARDS_JS, {k: src.get(k) for k in ("card", "link", "title", "study")})
-            elif src["mode"] == "links":
-                cards = await page.evaluate(LINKS_JS, src["link_re"])
-            else:  # text
+            for attempt in range(4):  # a slow page can show nothing at first: look again
+                if src["mode"] == "cards":
+                    cards = await page.evaluate(CARDS_JS, {k: src.get(k) for k in ("card", "link", "title", "study")})
+                elif src["mode"] == "links":
+                    cards = await page.evaluate(LINKS_JS, src["link_re"])
+                else:
+                    break
+                if cards or n > 0:
+                    break
+                await page.wait_for_timeout(2000)
+            if src["mode"] not in ("cards", "links"):  # text
                 body = await page.inner_text("body")
                 lo = body.lower()
                 i = lo.find(src["start"].lower())
@@ -1160,43 +1167,51 @@ def send(text):
 
 
 async def run_once(ctx, only=None, check=False, dump=False, post_existing=False):
-    for src in SOURCES:
-        if only and src["key"] not in only:
-            continue
+    # several sites are read at the same time (CONFIG "parallel"; 1 = one by one)
+    sem = asyncio.Semaphore(max(1, int(CONFIG.get("parallel", 4 if SERVER else 1))))
+
+    async def one(src):
+        async with sem:
+            await check_source(ctx, src, check, dump, post_existing)
+
+    await asyncio.gather(*(one(s) for s in SOURCES if not only or s["key"] in only))
+
+
+async def check_source(ctx, src, check, dump, post_existing):
+    try:
+        current = await read_source(ctx, src, dump=dump)
+    except Exception as e:
+        print(f"[{src['key']}] couldn't read: {e}")
+        return
+    print(f"[{src['key']}] {len(current)} studies listed")
+    if check or dump:
+        for k, item in list(current.items())[:3] if check else []:
+            await fill_details(ctx, src, item)
+            print("-" * 40)
+            print(build_post(src, "New", item))
+        return
+    if not current:  # site down or page changed: don't treat as "all closed"
+        return
+    first_run = not DB.execute("SELECT 1 FROM items WHERE source=? LIMIT 1", (src["key"],)).fetchone()
+    todo, closed = decide(src, current)
+    if first_run and not post_existing:
+        print(f"[{src['key']}] first run: recorded {len(current)} existing studies without posting")
+        todo = []
+    for status, k in todo:
+        item = current[k]
         try:
-            current = await read_source(ctx, src, dump=dump)
+            await fill_details(ctx, src, item)
+            if await asyncio.to_thread(send, build_post(src, status, item)):
+                print(f"[{src['key']}] posted {status}: {item.get('title') or k}")
+                item["posted"] = True
+            await asyncio.sleep(CONFIG.get("seconds_between_posts", 3))
         except Exception as e:
-            print(f"[{src['key']}] couldn't read: {e}")
-            continue
-        print(f"[{src['key']}] {len(current)} studies listed")
-        if check or dump:
-            for k, item in list(current.items())[:3] if check else []:
-                await fill_details(ctx, src, item)
-                print("-" * 40)
-                print(build_post(src, "New", item))
-            continue
-        if not current:  # site down or page changed: don't treat as "all closed"
-            continue
-        first_run = not DB.execute("SELECT 1 FROM items WHERE source=? LIMIT 1", (src["key"],)).fetchone()
-        todo, closed = decide(src, current)
-        if first_run and not post_existing:
-            print(f"[{src['key']}] first run: recorded {len(current)} existing studies without posting")
-            todo = []
-        for status, k in todo:
-            item = current[k]
-            try:
-                await fill_details(ctx, src, item)
-                if send(build_post(src, status, item)):
-                    print(f"[{src['key']}] posted {status}: {item.get('title') or k}")
-                    item["posted"] = True
-                time.sleep(CONFIG.get("seconds_between_posts", 3))
-            except Exception as e:
-                print(f"[{src['key']}] couldn't post {k}: {e}")
-        if src.get("closed_notice") and CONFIG.get("closed_notices", True) and not first_run:
-            for k in closed:
-                row = DB.execute("SELECT title FROM items WHERE source=? AND key=?", (src["key"], k)).fetchone()
-                send(src["closed_notice"].format(title=(row and row[0]) or k))
-        record(src, current, closed)
+            print(f"[{src['key']}] couldn't post {k}: {e}")
+    if src.get("closed_notice") and CONFIG.get("closed_notices", True) and not first_run:
+        for k in closed:
+            row = DB.execute("SELECT title FROM items WHERE source=? AND key=?", (src["key"], k)).fetchone()
+            send(src["closed_notice"].format(title=(row and row[0]) or k))
+    record(src, current, closed)
 
 
 def find_chat():
@@ -1233,9 +1248,18 @@ async def main():
             return
         start, end = CONFIG.get("active_hours", [0, 24])
         post_existing = "--post-existing" in args
-        if "--once" in args:  # GitHub Actions: one check per run
-            if start <= datetime.now().hour < end:
+        if "--once" in args:  # one run of the server's 10-minute timer (or GitHub Actions)
+            # On the server, keep re-checking for most of the 10 minutes instead of
+            # checking once, so new studies are posted within about a minute.
+            keep_going = SERVER and CONFIG.get("fast_checks", True)
+            began = time.time()
+            while start <= datetime.now().hour < end:
+                cycle = time.time()
                 await run_once(ctx, only, post_existing=post_existing)
+                post_existing = False
+                if not keep_going or time.time() - began > 8 * 60:
+                    break
+                await asyncio.sleep(max(0, CONFIG.get("check_every_seconds", 30) - (time.time() - cycle)))
             else:
                 print("Outside active hours; nothing to do.")
             return
