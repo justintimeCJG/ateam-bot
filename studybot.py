@@ -148,6 +148,7 @@ SOURCES = [
          no_date=True, style="passthrough", list_urls=["https://www.frontagelab.com/clinical-studies/"],
          mode="links", link_re=r"frontagelab\.com/clinical-studies/(?!referral)[\w-]+/?$", detail=True,
          post_url="https://www.frontagelab.com/clinical-studies/",
+         fresh=False,  # this site answers "page not found" if anything is added to the address
          need_money=False),
 ]
 # Worldwide Clinical Trials' study page now forwards to Fortrea, which is covered above.
@@ -1031,7 +1032,7 @@ async def read_source(ctx, src, dump=False):
     found, raw = {}, set()
     try:
         for n, list_url in enumerate(src["list_urls"]):
-            await load(page, fresh(list_url), src.get("wait", 2500))
+            await load(page, fresh(list_url) if src.get("fresh", True) else list_url, src.get("wait", 2500))
             if dump:
                 d = HERE / "dumps"
                 d.mkdir(exist_ok=True)
