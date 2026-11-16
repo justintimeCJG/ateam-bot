@@ -61,6 +61,14 @@ if HERE.resolve().as_posix() == "/opt/studybot":
          str(_lib / "usr/lib")] + [p for p in [os.environ.get("LD_LIBRARY_PATH")] if p])
     if not (_lib / ".ok2").exists():
         subprocess.run(["bash", "-c", SERVER_SETUP], cwd=HERE)
+    # the server has no fonts installed; point Chromium at the unpacked ones
+    _fc = _lib / "fonts.conf"
+    _fc.write_text(f"""<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd"><fontconfig>
+<include ignore_missing="yes">/etc/fonts/fonts.conf</include>
+<dir>{_lib}/usr/share/fonts</dir><cachedir>{HERE}/fontcache</cachedir></fontconfig>
+""")
+    os.environ["FONTCONFIG_FILE"] = str(_fc)
+    os.environ.setdefault("DEBUG", "pw:browser")  # browser errors go to the server log
 DB = sqlite3.connect(HERE / "studybot.db")
 DB.execute("""CREATE TABLE IF NOT EXISTS items(
     source TEXT, key TEXT, present INTEGER, missing INTEGER, sig TEXT,
