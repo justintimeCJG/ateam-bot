@@ -1296,7 +1296,7 @@ def check_alert_signup():
         off = max(off, u["update_id"] + 1)
         m = u.get("message") or {}
         chat = m.get("chat") or {}
-        if chat.get("type") == "private" and (m.get("text") or "").strip().lower().startswith(("/alerts", "/start")):
+        if chat.get("type") == "private" and (m.get("text") or "").strip().lower().startswith(("/alert", "/start")):
             meta_set("alerts_chat", chat["id"])
             tg("sendMessage", chat_id=chat["id"], text=(
                 "\u2705 A-Team bot alerts will come to this chat. You'll get a message if a study "
