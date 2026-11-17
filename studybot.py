@@ -1203,8 +1203,12 @@ async def check_source(ctx, src, check, dump, post_existing):
         current = await read_source(ctx, src, dump=dump)
     except Exception as e:
         print(f"[{src['key']}] couldn't read: {e}")
+        if not (check or dump):
+            health(src, "error", str(e).split("\n")[0][:150])
         return
     print(f"[{src['key']}] {len(current)} studies listed")
+    if not (check or dump):
+        health(src, "ok" if current else "empty")
     if check or dump:
         for k, item in list(current.items())[:3] if check else []:
             await fill_details(ctx, src, item)
@@ -1249,6 +1253,105 @@ def find_chat():
         print("No chats yet. Add the bot to your group, send any message in the group, then run this again.")
     for cid, name in chats.items():
         print(f"{cid}  {name}")
+
+
+# --------------------------------------------------------------------------
+# Alerts: a private message to the owner when something stops working.
+# To turn them on, open a private chat with the bot in Telegram and send /alerts
+# --------------------------------------------------------------------------
+NAMES = dict(icon_sa="ICON San Antonio", icon_lenexa="ICON Lenexa", icon_slc="ICON Salt Lake City",
+             icon_sa_screenings="ICON San Antonio screenings", parexel_bal="Parexel Baltimore",
+             parexel_la="Parexel Los Angeles", fortrea="Fortrea", abbvie="AbbVie", celerion="Celerion",
+             trialmed="Trialmed", alta_kc="Altasciences Kansas City", alta_la="Altasciences Cypress",
+             medpace="Medpace", drvince="Dr. Vince", frontage="Frontage")
+
+
+def meta_get(k):
+    row = DB.execute("SELECT v FROM meta WHERE k=?", (k,)).fetchone()
+    return row[0] if row else None
+
+
+def meta_set(k, v):
+    if v is None:
+        DB.execute("DELETE FROM meta WHERE k=?", (k,))
+    else:
+        DB.execute("INSERT OR REPLACE INTO meta VALUES(?, ?)", (k, str(v)))
+    DB.commit()
+
+
+def tg(method, **data):
+    try:
+        return requests.post(f"https://api.telegram.org/bot{CONFIG['bot_token']}/{method}",
+                             json=data, timeout=30).json()
+    except Exception as e:
+        print("Telegram error:", e)
+        return {}
+
+
+def check_alert_signup():
+    """Pick up a private /alerts message to the bot and remember who sent it."""
+    off = int(meta_get("tg_offset") or 0)
+    r = tg("getUpdates", offset=off, timeout=0, allowed_updates=["message"])
+    for u in r.get("result", []):
+        off = max(off, u["update_id"] + 1)
+        m = u.get("message") or {}
+        chat = m.get("chat") or {}
+        if chat.get("type") == "private" and (m.get("text") or "").strip().lower().startswith(("/alerts", "/start")):
+            meta_set("alerts_chat", chat["id"])
+            tg("sendMessage", chat_id=chat["id"], text=(
+                "\u2705 A-Team bot alerts will come to this chat. You'll get a message if a study "
+                "site keeps failing, if a site suddenly shows no studies, or if the always-on "
+                "checker stops, and another one when it's working again."))
+    if r.get("result"):
+        meta_set("tg_offset", off)
+
+
+def alert(text):
+    chat = CONFIG.get("alerts_chat_id") or meta_get("alerts_chat")
+    print("ALERT:", text)
+    if not chat:
+        return False
+    return bool(tg("sendMessage", chat_id=chat, text=text, disable_web_page_preview=True).get("ok"))
+
+
+def health(src, state, detail=""):
+    """Track each site; alert after 15 min of errors or 30 min of no studies."""
+    if not SERVER:
+        return
+    k, now, name = "health:" + src["key"], time.time(), NAMES.get(src["key"], src["key"])
+    h = json.loads(meta_get(k) or "{}")
+    if state == "ok":
+        if h.get("alerted"):
+            alert(f"\u2705 {name} is working again.")
+        if h:
+            meta_set(k, None)
+        return
+    if h.get("state") != state:
+        h = dict(state=state, since=now, alerted=h.get("alerted", False))
+    limit = 15 * 60 if state == "error" else 30 * 60
+    if not h["alerted"] and now - h["since"] >= limit:
+        mins = int((now - h["since"]) // 60)
+        if state == "error":
+            msg = (f"\u26a0\ufe0f {name}: the bot hasn't been able to read the site for {mins} minutes, "
+                   f"so new studies there won't post.\nError: {detail or 'unknown'}")
+        else:
+            msg = (f"\u26a0\ufe0f {name}: the site has shown 0 studies for {mins} minutes. Either it really "
+                   f"has none right now, or the site is blocking the bot.")
+        h["alerted"] = alert(msg)
+    meta_set(k, json.dumps(h))
+
+
+def runner_health(alive):
+    """Called by the 10-minute timer: is the always-on checker running?"""
+    start, end = CONFIG.get("active_hours", [0, 24])
+    flagged = meta_get("health:runner")
+    if alive and flagged:
+        alert("\u2705 The always-on checker is running again.")
+        meta_set("health:runner", None)
+    elif not alive and not flagged and start <= datetime.now().hour < end:
+        if alert("\u26a0\ufe0f The always-on checker has stopped. The backup check (every 10 minutes, "
+                 "about 1 minute slower) is posting studies in the meantime."):
+            meta_set("health:runner", 1)
 
 
 # --------------------------------------------------------------------------
@@ -1330,6 +1433,7 @@ async def forever(only):
             if active:
                 await run_once(ctx, only)
                 beat()
+            check_alert_signup()
             if time.time() - last_pull > 300:
                 last_pull = time.time()
                 if pulled_update():
@@ -1356,7 +1460,9 @@ async def main():
         return await forever([a for a in args if not a.startswith("--")])
     if SERVER and "--once" in args:  # the 10-minute timer: just make sure the checker is on
         install_cron()
-        if runner_alive():
+        alive = runner_alive()
+        runner_health(alive)
+        if alive:
             print("Always-on checker is running; nothing to do.")
             return
         if not take_lock("work"):
