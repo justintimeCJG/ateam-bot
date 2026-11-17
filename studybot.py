@@ -1296,7 +1296,7 @@ def check_alert_signup():
         off = max(off, u["update_id"] + 1)
         m = u.get("message") or {}
         chat = m.get("chat") or {}
-        if chat.get("type") == "private" and (m.get("text") or "").strip().lower().startswith(("/alert", "/start")):
+        if chat.get("type") == "private" and (m.get("text") or "").strip().lower().startswith(("/alerts", "/start")):
             meta_set("alerts_chat", chat["id"])
             tg("sendMessage", chat_id=chat["id"], text=(
                 "\u2705 A-Team bot alerts will come to this chat. You'll get a message if a study "
@@ -1397,13 +1397,16 @@ def install_cron():
         print("Couldn't install the always-on checker:", e)
 
 
+CODE_AT_START = (HERE / "studybot.py").read_bytes()
+
+
 def pulled_update():
-    """Fetch bot changes from GitHub; True if studybot.py changed."""
+    """Fetch bot changes from GitHub; True if the code differs from what's running."""
     repo = Path("/home/studybot/repo")
     try:
         subprocess.run(["git", "-C", str(repo), "pull", "-q"], timeout=90)
         new = (repo / "studybot.py").read_bytes()
-        if new != (HERE / "studybot.py").read_bytes():
+        if new != CODE_AT_START:
             (HERE / "studybot.py").write_bytes(new)
             return True
     except Exception as e:
