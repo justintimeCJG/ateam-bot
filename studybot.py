@@ -70,6 +70,15 @@ if SERVER:
 <dir>{_lib}/usr/share/fonts</dir><cachedir>{HERE}/fontcache</cachedir></fontconfig>
 """)
     os.environ["FONTCONFIG_FILE"] = str(_fc)
+    # keep the bot's Telegram token where the always-on checker can read it
+    # (only the bot's own user account can open this file)
+    _tok = HERE / ".token"
+    if os.environ.get("TELEGRAM_BOT_TOKEN"):
+        if not _tok.exists() or _tok.read_text().strip() != os.environ["TELEGRAM_BOT_TOKEN"]:
+            _tok.write_text(os.environ["TELEGRAM_BOT_TOKEN"])
+        os.chmod(_tok, 0o600)
+    elif _tok.exists():
+        CONFIG["bot_token"] = _tok.read_text().strip()
 DB = sqlite3.connect(HERE / "studybot.db")
 DB.execute("""CREATE TABLE IF NOT EXISTS items(
     source TEXT, key TEXT, present INTEGER, missing INTEGER, sig TEXT,
@@ -1242,19 +1251,124 @@ def find_chat():
         print(f"{cid}  {name}")
 
 
+# --------------------------------------------------------------------------
+# Oracle server: one always-on checker (started by cron every minute if it
+# isn't already running), so there is no gap between checks
+# --------------------------------------------------------------------------
+_LOCKS = {}
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/130.0 Safari/537.36")
+
+
+def take_lock(name):
+    import fcntl
+    f = open(HERE / f".{name}.lock", "w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        return False
+    _LOCKS[name] = f
+    return True
+
+
+def beat():
+    (HERE / ".heartbeat").write_text(str(time.time()))
+
+
+def runner_alive():
+    try:
+        return time.time() - float((HERE / ".heartbeat").read_text()) < 150
+    except Exception:
+        return False
+
+
+def install_cron():
+    line = f"* * * * * cd {HERE} && venv/bin/python studybot.py --forever >> {HERE}/forever.log 2>&1"
+    try:
+        cur = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
+        if "--forever" not in cur:
+            subprocess.run(["crontab", "-"], input=cur + line + "\n", text=True, check=True)
+            print("Installed the always-on checker.")
+    except Exception as e:
+        print("Couldn't install the always-on checker:", e)
+
+
+def pulled_update():
+    """Fetch bot changes from GitHub; True if studybot.py changed."""
+    repo = Path("/home/studybot/repo")
+    try:
+        subprocess.run(["git", "-C", str(repo), "pull", "-q"], timeout=90)
+        new = (repo / "studybot.py").read_bytes()
+        if new != (HERE / "studybot.py").read_bytes():
+            (HERE / "studybot.py").write_bytes(new)
+            return True
+    except Exception as e:
+        print("update check failed:", e)
+    return False
+
+
+async def forever(only):
+    if not take_lock("runner"):
+        return  # already running
+    log = HERE / "forever.log"
+    if log.exists() and log.stat().st_size > 5_000_000:
+        os.truncate(log, 0)
+    while not take_lock("work"):  # let a timer run that's in progress finish
+        beat()
+        await asyncio.sleep(2)
+    print(datetime.now().strftime("%m/%d %I:%M:%S %p"), "always-on checker started")
+    started = last_pull = time.time()
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        ctx = await browser.new_context(user_agent=UA)
+        while True:
+            beat()
+            cycle = time.time()
+            start, end = CONFIG.get("active_hours", [0, 24])
+            active = start <= datetime.now().hour < end
+            if active:
+                await run_once(ctx, only)
+                beat()
+            if time.time() - last_pull > 300:
+                last_pull = time.time()
+                if pulled_update():
+                    print("bot updated from GitHub: restarting")
+                    break
+            if time.time() - started > 3 * 3600 or not browser.is_connected():
+                break  # restart now and then (or if the browser crashed) with a fresh browser
+            wait = CONFIG.get("check_every_seconds", 30) if active else 60
+            await asyncio.sleep(max(5, wait - (time.time() - cycle)))
+        try:
+            await browser.close()
+        except Exception:
+            pass
+    for f in _LOCKS.values():
+        f.close()
+    os.execv(sys.executable, [sys.executable, str(HERE / "studybot.py"), "--forever"])
+
+
 async def main():
     args = sys.argv[1:]
     if "--find-chat" in args:
         return find_chat()
+    if SERVER and "--forever" in args:
+        return await forever([a for a in args if not a.startswith("--")])
+    if SERVER and "--once" in args:  # the 10-minute timer: just make sure the checker is on
+        install_cron()
+        if runner_alive():
+            print("Always-on checker is running; nothing to do.")
+            return
+        if not take_lock("work"):
+            print("Another check is still running; nothing to do.")
+            return
     check, dump = "--check" in args, "--dump" in args
     only = [a for a in args if not a.startswith("--")]
     if not (check or dump) and (not CONFIG.get("bot_token") or not CONFIG.get("chat_id")):
         sys.exit("Put your bot_token and chat_id in config.json first (see README.md).")
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        ctx = await browser.new_context(user_agent=(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/130.0 Safari/537.36"))
+        ctx = await browser.new_context(user_agent=UA)
         if check or dump:
             await run_once(ctx, only, check=check, dump=dump)
             return
@@ -1269,7 +1383,7 @@ async def main():
                 cycle = time.time()
                 await run_once(ctx, only, post_existing=post_existing)
                 post_existing = False
-                if not keep_going or time.time() - began > 8 * 60:
+                if not keep_going or time.time() - began > 8 * 60 or (SERVER and runner_alive()):
                     break
                 await asyncio.sleep(max(0, CONFIG.get("check_every_seconds", 30) - (time.time() - cycle)))
             else:
